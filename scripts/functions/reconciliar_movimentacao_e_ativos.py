@@ -601,22 +601,84 @@ def executar_reconciliacao():
     except Exception:
         pass
 
+    # Carregar sq_dim_regiao do Supabase para ter o de-para sempre atualizado dinamicamente
+    dim_regiao_cache = {}
+    try:
+        res_dim = supabase.table("sq_dim_regiao").select("nome_regiao, nome_regiao_formatada, agroindustria").eq("status", "Ativo").execute()
+        for r_dim in (res_dim.data or []):
+            raw_n = str(r_dim.get("nome_regiao") or "").strip().upper()
+            fmt_n = str(r_dim.get("nome_regiao_formatada") or "").strip()
+            agro_n = str(r_dim.get("agroindustria") or "").strip().upper()
+            if raw_n and fmt_n:
+                if agro_n:
+                    dim_regiao_cache[f"{agro_n}|{raw_n}"] = fmt_n
+                if raw_n not in dim_regiao_cache:
+                    dim_regiao_cache[raw_n] = fmt_n
+    except Exception:
+        pass
+
+    UF_TO_NOME = {
+        "BA": "Bahia",
+        "CE": "Ceará",
+        "AL": "Alagoas",
+        "SE": "Sergipe",
+        "PE": "Pernambuco",
+        "MT": "Campinápolis",
+        "GO": "Goiânia",
+        "SP": "Araçatuba",
+        "MG": "Minas Gerais"
+    }
+
     def formatar_regiao(agro, reg_raw, estado_val):
-        if not reg_raw or str(reg_raw).strip().lower() in ["none", "nan", "teste", "labor rural", "unidade generica"]:
-            return estado_val or "NÃO INFORMADA"
-        r_str = str(reg_raw).strip()
+        target = reg_raw
+        if not target or str(target).strip().lower() in ["none", "nan", "teste", "labor rural", "unidade generica"]:
+            target = estado_val
+        if not target or str(target).strip().lower() in ["none", "nan", "teste", "labor rural", "unidade generica"]:
+            return "NÃO INFORMADA"
+
+        t_str = str(target).strip()
+        t_upper = t_str.upper()
+        agro_upper = str(agro or "").strip().upper()
+
+        # 1. Consulta ao cache dinâmico da sq_dim_regiao
+        if agro_upper and f"{agro_upper}|{t_upper}" in dim_regiao_cache:
+            return dim_regiao_cache[f"{agro_upper}|{t_upper}"]
+        if t_upper in dim_regiao_cache:
+            return dim_regiao_cache[t_upper]
+
+        # 2. Regras específicas por agroindústria
         if agro == "Nestlé":
-            if r_str in ["Patos de Minas - 9188", "Ibiá - 1215", "9188", "1215"]:
+            if t_str in ["Patos de Minas - 9188", "Ibiá - 1215", "9188", "1215", "MG"]:
                 return "Patos de Minas e Ibiá"
-            if "9655" in r_str or "Goiânia" in r_str or "Goiania" in r_str:
+            if "9655" in t_str or "Goiânia" in t_str or "Goiania" in t_str or t_upper == "GO":
                 return "Goiânia"
-            if "1217" in r_str or "Ituiutaba" in r_str:
+            if "1217" in t_str or "Ituiutaba" in t_str or "TRIANGULO" in t_upper:
                 return "Ituiutaba"
-            if "9264" in r_str or "Montes Claros" in r_str:
+            if "9264" in t_str or "Montes Claros" in t_str:
                 return "Montes Claros"
-            if "0460" in r_str or "Araçatuba" in r_str:
+            if "0460" in t_str or "Araçatuba" in t_str or t_upper == "SP":
                 return "Araçatuba"
-        return r_str
+        elif agro == "CAMPILEITE":
+            if t_upper in ["MT", "CAMPINAPOLIS", "CAMPINÁPOLIS"]:
+                return "Campinápolis"
+        elif agro == "Copril":
+            if t_upper in ["MG", "ITAMBACURI"]:
+                return "Itambacuri"
+        elif agro == "Danone":
+            if t_upper in ["MG", "MINAS GERAIS", "SUL DE MINAS"]:
+                return "Sul de Minas"
+        elif agro in ["LPA", "Laticínios Porto Alegre"]:
+            if t_upper in ["MG", "PONTE NOVA"]:
+                return "Ponte Nova"
+        elif agro == "CCPR":
+            if t_upper in ["GO", "DF", "GOIANIA", "GOIÂNIA"]:
+                return "Goiânia"
+
+        # 3. Fallback de UFs e siglas
+        if t_upper in UF_TO_NOME:
+            return UF_TO_NOME[t_upper]
+
+        return t_str
 
     for _, r in df_g_raw.iterrows():
         c = str(r.get(cod_col_name) or "").strip()

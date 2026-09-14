@@ -489,13 +489,13 @@ class DashboardCharts {
     this.instances[id] = new Chart(ctx, {
       type: 'doughnut',
       plugins: [
-        this.centerText(centerTitle, { fontSize: 10, color: color.ink }),
+        this.centerText(centerTitle, { fontSize: 13, color: color.ink }),
         this.valueLabels((value, context) => {
           const val = Number(value || 0);
           if (val === 0) return '';
           const pct = this.formatValue(context.percentage, '%');
           return `${this.formatValue(val)} (${pct})`;
-        }, { minimumPercentage: 2, fontSize: 8 })
+        }, { minimumPercentage: 2, fontSize: 9.5 })
       ],
       data: {
         labels: baseLabels,
@@ -509,9 +509,9 @@ class DashboardCharts {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '44%',
-        radius: '56%',
-        layout: { padding: { top: 6, bottom: 8, left: 6, right: 6 } },
+        cutout: '48%',
+        radius: '90%',
+        layout: { padding: { top: 4, bottom: 4, left: 4, right: 4 } },
         plugins: {
           legend: {
             display: false

@@ -35,61 +35,57 @@
       <p>Visitas, vínculos, inativação, cadastro e grupo</p>
     </div>
 
-    <div class="header-actions">
-      <div class="sync-badge" aria-live="polite">
-        <span class="live-dot" aria-hidden="true"></span>
-        <span id="lastUpdateTag">Sincronização automática</span>
+    <div class="header-right">
+      <section class="filter-shell" id="filterShell" aria-label="Filtros da análise">
+        <label class="filter-control">
+          <span>Agroindústria</span>
+          <select id="filterIndustry" aria-label="Agroindústria"><option value="">Todas</option></select>
+        </label>
+        <label class="filter-control">
+          <span>Região</span>
+          <select id="filterRegion" aria-label="Região"><option value="">Todas</option></select>
+        </label>
+        <label class="filter-control">
+          <span>Projeto</span>
+          <select id="filterProject" aria-label="Projeto"><option value="">Todos</option></select>
+        </label>
+        <label class="filter-control">
+          <span>Status</span>
+          <select id="filterStatus" aria-label="Status"><option value="">Todos</option></select>
+        </label>
+        <label class="filter-control filter-control--wide">
+          <span>Consultor</span>
+          <select id="filterConsultant" aria-label="Consultor"><option value="">Todos</option></select>
+        </label>
+        <label class="filter-control filter-control--wide">
+          <span>Produtor</span>
+          <select id="filterProducer" aria-label="Produtor"><option value="">Todos</option></select>
+        </label>
+        <label class="filter-control filter-control--medium">
+          <span>Mês</span>
+          <select id="filterMonth" aria-label="Mês de referência"><option value="">Todos</option></select>
+        </label>
+      </section>
+
+      <div class="header-actions">
+        <button class="mobile-filter-toggle" id="mobileFilterToggle" type="button" aria-expanded="false" aria-label="Alternar barra de filtros">
+          <span class="material-symbols-rounded" aria-hidden="true">tune</span>
+          <span>Filtros</span>
+        </button>
+        <button class="carousel-pause-toggle paused" id="carouselPauseToggle" type="button" aria-pressed="true" aria-label="Continuar rotação dos slides">
+          <span class="pause-icon" aria-hidden="true">▶</span>
+          <span class="pause-toggle-label">Slide fixo</span>
+        </button>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false" aria-label="Ativar modo escuro" title="Alternar modo escuro / claro">
+          <span class="material-symbols-rounded theme-icon" aria-hidden="true">dark_mode</span>
+        </button>
+        <button class="update-block update-block--interactive" id="btnProvenance" type="button" aria-haspopup="dialog" aria-label="Ver detalhes e versões das planilhas de origem" title="Clique para ver detalhes das planilhas de origem">
+          <span class="update-block-header"><span class="material-symbols-rounded icon-provenance" aria-hidden="true">history</span> Última atualização</span>
+          <strong id="lastUpdateDate">--/--/----</strong>
+        </button>
       </div>
-      <button class="mobile-filter-toggle" id="mobileFilterToggle" type="button" aria-expanded="false" aria-label="Alternar barra de filtros">
-        <span class="material-symbols-rounded" aria-hidden="true">tune</span>
-        <span>Filtros</span>
-      </button>
-      <button class="carousel-pause-toggle paused" id="carouselPauseToggle" type="button" aria-pressed="true" aria-label="Continuar rotação dos slides">
-        <span class="pause-icon" aria-hidden="true">▶</span>
-        <span class="pause-toggle-label">Slide fixo</span>
-      </button>
-      <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false" aria-label="Ativar modo escuro">
-        <span class="theme-icon" aria-hidden="true">◔</span>
-        <span class="theme-toggle-label">Modo escuro</span>
-      </button>
-      <button class="update-block update-block--interactive" id="btnProvenance" type="button" aria-haspopup="dialog" aria-label="Ver detalhes e versões das planilhas de origem" title="Clique para ver detalhes das planilhas de origem">
-        <span class="update-block-header"><span class="material-symbols-rounded icon-provenance" aria-hidden="true">history</span> Última atualização</span>
-        <strong id="lastUpdateDate">--/--/----</strong>
-      </button>
-      <time class="clock-box" id="headerClock">00:00:00</time>
     </div>
   </header>
-
-  <section class="filter-shell" id="filterShell" aria-label="Filtros da análise">
-    <label class="filter-control">
-      <span>Agroindústria</span>
-      <select id="filterIndustry" aria-label="Agroindústria"><option value="">Todas</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Região</span>
-      <select id="filterRegion" aria-label="Região"><option value="">Todas</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Projeto</span>
-      <select id="filterProject" aria-label="Projeto"><option value="">Todos</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Status</span>
-      <select id="filterStatus" aria-label="Status"><option value="">Todos</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Consultor</span>
-      <select id="filterConsultant" aria-label="Consultor"><option value="">Todos</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Produtor</span>
-      <select id="filterProducer" aria-label="Produtor"><option value="">Todos</option></select>
-    </label>
-    <label class="filter-control">
-      <span>Mês</span>
-      <select id="filterMonth" aria-label="Mês de referência"><option value="">Todos</option></select>
-    </label>
-  </section>
 
   <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
     <div class="loading-spinner"></div>

@@ -122,8 +122,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function setTheme(theme, persist = true) {
     root.dataset.theme = theme === 'dark' ? 'dark' : 'light';
     const isDark = root.dataset.theme === 'dark';
+    const labelText = `Ativar modo ${isDark ? 'claro' : 'escuro'}`;
     themeToggle?.setAttribute('aria-pressed', String(isDark));
-    themeToggle?.setAttribute('aria-label', `Ativar modo ${isDark ? 'claro' : 'escuro'}`);
+    themeToggle?.setAttribute('aria-label', labelText);
+    themeToggle?.setAttribute('title', labelText);
+    const themeIcon = themeToggle?.querySelector('.theme-icon');
+    if (themeIcon) themeIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
     const label = themeToggle?.querySelector('.theme-toggle-label');
     if (label) label.textContent = `Modo ${isDark ? 'claro' : 'escuro'}`;
     if (themeMeta) themeMeta.content = isDark ? '#060E0D' : '#ffffff';
@@ -135,13 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setTheme(root.dataset.theme, false);
   themeToggle?.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
-
-  function updateClock() {
-    const now = new Date();
-    if (el('headerClock')) el('headerClock').textContent = now.toLocaleTimeString('pt-BR');
-  }
-  updateClock();
-  setInterval(updateClock, 1000);
 
   async function getJson(url) {
     try {
@@ -313,15 +310,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const KNOWN_ACRONYMS = new Set(['AL', 'MG', 'SP', 'GO', 'CE', 'BA', 'SE', 'PE', 'RJ', 'PR', 'SC', 'RS', 'ES', 'MT', 'MS', 'RO', 'AC', 'AM', 'PA', 'MA', 'PI', 'RN', 'PB', 'TO', 'DF']);
   const LOWERCASE_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
 
+  const UF_TO_CANONICAL_REGION = {
+    'BA': 'Bahia',
+    'CE': 'Ceará',
+    'AL': 'Alagoas',
+    'SE': 'Sergipe',
+    'PE': 'Pernambuco',
+    'MT': 'Campinápolis',
+    'GO': 'Goiânia',
+    'SP': 'Araçatuba'
+  };
+
   function formatSingleRegionName(raw) {
     const str = fixMojibake(raw).trim();
     if (!str) return null;
 
     const explicitMap = {
+      'ba': 'Bahia',
+      'ce': 'Ceará',
+      'al': 'Alagoas',
+      'se': 'Sergipe',
+      'pe': 'Pernambuco',
+      'mt': 'Campinápolis',
+      'go': 'Goiânia',
+      'sp': 'Araçatuba',
       'alagoas': 'Alagoas',
       'aracatuba': 'Araçatuba',
       'bahia': 'Bahia',
-      'batalha/al': 'Batalha/AL',
+      'batalha/al': 'Alagoas',
+      'batalha': 'Alagoas',
       'ceara': 'Ceará',
       'goiania': 'Goiânia',
       'ibia': 'Ibiá',
@@ -331,10 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
       'minas gerais': 'Minas Gerais',
       'montes claros': 'Montes Claros',
       'patos de minas': 'Patos de Minas',
-      'pedra do forte': 'Pedra do Forte',
+      'pedra do forte': 'Bahia',
       'pernambuco': 'Pernambuco',
       'ponte nova': 'Ponte Nova',
-      'quixeramobim': 'Quixeramobim',
+      'quixeramobim': 'Ceará',
       'sergipe': 'Sergipe',
       'sertao norte': 'Sertão Norte',
       'sul de minas': 'Sul de Minas',
@@ -354,9 +371,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return explicitMap[baseKey] + suffix;
     }
 
+    const baseUpper = base.toUpperCase().trim();
+    if (UF_TO_CANONICAL_REGION[baseUpper]) {
+      return UF_TO_CANONICAL_REGION[baseUpper] + suffix;
+    }
+
     const words = base.split(/\s+/);
     const formattedWords = words.map((w, idx) => {
       const wUpper = w.toUpperCase();
+      if (UF_TO_CANONICAL_REGION[wUpper]) return UF_TO_CANONICAL_REGION[wUpper];
       if (KNOWN_ACRONYMS.has(wUpper)) return wUpper;
       const wLower = w.toLowerCase();
       if (idx > 0 && LOWERCASE_WORDS.has(wLower)) return wLower;
@@ -418,20 +441,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nestleReg) return nestleReg;
       }
 
+      if (upper === 'BATALHA/AL' || upper.startsWith('BATALHA/')) {
+        return 'Alagoas';
+      }
+
       if (str.includes('/')) {
         const parts = str.split('/').map(p => p.trim()).filter(Boolean);
         const cleanParts = parts.map(part => formatSingleRegionName(part)).filter(Boolean);
         if (cleanParts.length === 0) return null;
 
-        // Preservar formato Cidade/UF (ex: BATALHA/AL)
-        const lastPart = cleanParts[cleanParts.length - 1];
-        if (cleanParts.length === 2 && KNOWN_ACRONYMS.has(lastPart.toUpperCase())) {
-          return `${cleanParts[0]}/${lastPart.toUpperCase()}`;
-        }
+        // Deduplicate (ex: Alagoas/Alagoas -> Alagoas)
+        const uniqueParts = [...new Set(cleanParts)];
+        if (uniqueParts.length === 1) return uniqueParts[0];
 
         // Ordenar alfabeticamente para estados compostos (ex: Sergipe/Bahia -> Bahia/Sergipe)
-        cleanParts.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        return cleanParts.join('/');
+        uniqueParts.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        return uniqueParts.join('/');
       }
 
       return formatSingleRegionName(str);
@@ -513,9 +538,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const rowMonth = String(row.mes_referencia || row.data_referencia || '').slice(0, 10);
     const monthMatch = ignoreMonth || !filter.month || !rowMonth || dimensionMatches(rowMonth, filter.month);
 
+    const rawAgroVal = row.agroindustria || row.agroindustrias || row.projeto || row.projetos;
+    const rowAgro = Array.isArray(rawAgroVal) ? rawAgroVal.map(mapAgroindustria) : mapAgroindustria(rawAgroVal);
+
     return consultantMatch &&
       producerMatch &&
-      dimensionMatches(row.agroindustria || row.agroindustrias, filter.industry) &&
+      dimensionMatches(rowAgro, filter.industry) &&
       (!filterRegion || rowRegion === filterRegion) &&
       dimensionMatches(row.projeto || row.projetos, filter.project) &&
       (!filter.status || normalizeStatus(row.status) === normalizeStatus(filter.status)) &&
@@ -1192,14 +1220,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function mapAgroindustria(projeto) {
     if (!projeto) return 'NÃO INFORMADA';
-    const p = String(projeto).toUpperCase();
+    const p = String(projeto).trim().toUpperCase();
+    if (p === 'LEITE' || p === 'GERAL' || p === 'NÃO INFORMADA' || p === 'NAO INFORMADA') return 'NÃO INFORMADA';
     if (p.includes('ALVOAR')) return 'Alvoar';
     if (p.includes('CCPR')) return 'CCPR';
-    if (p.includes('LPA') || p.includes('PORTO ALEGRE')) return 'Laticínios Porto Alegre';
+    if (p.includes('LPA') || p.includes('PORTO ALEGRE')) return 'Laticínios Porto Alegre (LPA)';
     if (p.includes('REGENERA') || p.includes('NESTLE') || p.includes('NESTLÉ')) return 'Nestlé';
     if (p.includes('SEMEAR') || p.includes('DANONE')) return 'Danone';
     if (p.includes('COPRIL')) return 'Copril';
-    if (p.includes('CAMPILEITE')) return 'Campileite';
+    if (p.includes('CAMPILEITE')) return 'CAMPILEITE';
+    if (p.includes('QUILLAYES')) return 'Quillayes';
+    if (p.includes('PIRACANJUBA')) return 'Piracanjuba';
+    if (p.includes('INDEPENDENTE')) return 'Independente';
     return String(projeto).trim();
   }
 
@@ -1367,7 +1399,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (indSelect) {
       const prevVal = indSelect.value;
       const validRows = rows.filter((r) => matchesActiveExcept(r, 'industry'));
-      const available = [...new Set(validRows.map((r) => r.agroindustria).filter(Boolean).filter(ehCadeiaLeite))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      const oficiais = state.overview?.filterOptions?.agroindustrias;
+      let available = [...new Set(validRows.map((r) => r.agroindustria).filter(Boolean).filter(ehCadeiaLeite))];
+      if (oficiais && Array.isArray(oficiais) && oficiais.length > 0) {
+        available = available.filter((ind) => oficiais.includes(ind));
+      }
+      available.sort((a, b) => a.localeCompare(b, 'pt-BR'));
       indSelect.innerHTML = `<option value="">Todas</option>${available.map((ind) => `<option value="${escapeHtml(ind)}">${escapeHtml(ind)}</option>`).join('')}`;
       if (available.includes(prevVal)) indSelect.value = prevVal;
       else indSelect.value = '';
@@ -1638,7 +1675,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateTimestamp() {
     const now = new Date();
-    if (el('lastUpdateTag')) el('lastUpdateTag').textContent = 'Sincronização automática';
     if (el('lastUpdateDate')) el('lastUpdateDate').textContent = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   }
 
@@ -1679,9 +1715,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadAllData(isFilterChange = false) {
     showLoading(isFilterChange ? 'Atualizando dashboard com filtros...' : 'Carregando dados...');
-    if (el('lastUpdateTag')) {
-      el('lastUpdateTag').textContent = 'Atualizando dashboard com filtros...';
-    }
 
     try {
       if (!state.masterRows || state.masterRows.length === 0) {
@@ -1732,7 +1765,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function closeAllPopups() {
     document.querySelectorAll('.custom-select-popup').forEach((p) => p.classList.remove('open'));
-    document.querySelectorAll('.filter-control').forEach((fc) => fc.classList.remove('active-popup'));
+    document.querySelectorAll('.filter-control').forEach((fc) => {
+      fc.classList.remove('active-popup');
+      fc.setAttribute('aria-expanded', 'false');
+    });
   }
 
   function normalizeText(str) {
@@ -1749,6 +1785,13 @@ document.addEventListener('DOMContentLoaded', () => {
     filterControls.forEach((control) => {
       const select = control.querySelector('select');
       if (!select) return;
+
+      if (!control.hasAttribute('tabindex')) {
+        control.setAttribute('tabindex', '0');
+        control.setAttribute('role', 'combobox');
+        control.setAttribute('aria-expanded', 'false');
+        control.setAttribute('aria-haspopup', 'listbox');
+      }
 
       let displayValue = control.querySelector('.select-display-value');
       if (!displayValue) {
@@ -1778,11 +1821,44 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       control.dataset.customSelectInitialized = 'true';
 
+      let highlightedIndex = 0;
+
+      function highlightOption(index, scroll = true) {
+        const optionsList = popup.querySelector('.custom-select-options-list');
+        if (!optionsList) return;
+        const optEls = optionsList.querySelectorAll('.custom-select-option');
+        if (optEls.length === 0) return;
+
+        if (index < 0) index = 0;
+        if (index >= optEls.length) index = optEls.length - 1;
+        highlightedIndex = index;
+
+        optEls.forEach((el, idx) => {
+          if (idx === highlightedIndex) {
+            el.classList.add('highlighted');
+            if (scroll) {
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          } else {
+            el.classList.remove('highlighted');
+          }
+        });
+      }
+
+      function selectOptionByValue(val) {
+        select.value = val;
+        syncDisplayValue();
+        closeAllPopups();
+        showLoading('Atualizando dashboard com filtros...');
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        control.focus();
+      }
+
       function updatePopupOptions(searchQuery = '') {
         const options = Array.from(select.options);
         const queryNorm = normalizeText(searchQuery);
 
-        const filtered = options.filter(opt => {
+        const currentFilteredOptions = options.filter(opt => {
           if (!queryNorm) return true;
           return normalizeText(opt.text).includes(queryNorm);
         });
@@ -1803,37 +1879,76 @@ document.addEventListener('DOMContentLoaded', () => {
           const inputEl = searchWrap.querySelector('.custom-select-search-input');
           inputEl.addEventListener('click', (e) => e.stopPropagation());
           inputEl.addEventListener('mousedown', (e) => e.stopPropagation());
+          
           inputEl.addEventListener('keydown', (e) => {
             e.stopPropagation();
-            if (e.key === 'Escape') closeAllPopups();
+            const key = e.key;
+            const isDown = key === 'ArrowDown' || key === 'Down' || e.keyCode === 40;
+            const isUp = key === 'ArrowUp' || key === 'Up' || e.keyCode === 38;
+            const isEnter = key === 'Enter' || e.keyCode === 13;
+            const isEsc = key === 'Escape' || key === 'Esc' || e.keyCode === 27;
+            const isTab = key === 'Tab' || e.keyCode === 9;
+
+            if (isDown) {
+              e.preventDefault();
+              highlightOption(highlightedIndex + 1, true);
+            } else if (isUp) {
+              e.preventDefault();
+              highlightOption(highlightedIndex - 1, true);
+            } else if (isEnter) {
+              e.preventDefault();
+              const optsList = popup.querySelector('.custom-select-options-list');
+              const optEls = optsList ? optsList.querySelectorAll('.custom-select-option') : [];
+              if (optEls.length > 0) {
+                const targetIdx = Math.max(0, Math.min(highlightedIndex, optEls.length - 1));
+                const targetEl = optEls[targetIdx];
+                if (targetEl && targetEl.dataset.value !== undefined) {
+                  selectOptionByValue(targetEl.dataset.value);
+                }
+              }
+            } else if (isEsc) {
+              e.preventDefault();
+              closeAllPopups();
+              control.focus();
+            } else if (isTab) {
+              closeAllPopups();
+            }
           });
+
           inputEl.addEventListener('input', (e) => {
             updatePopupOptions(e.target.value);
           });
         }
 
-        if (filtered.length === 0) {
+        if (currentFilteredOptions.length === 0) {
           optionsList.innerHTML = `<div class="custom-select-no-results">Nenhum resultado encontrado</div>`;
+          highlightedIndex = -1;
         } else {
-          optionsList.innerHTML = filtered.map((opt) => {
+          const selectedIdx = currentFilteredOptions.findIndex(opt => opt.value === select.value);
+          highlightedIndex = selectedIdx >= 0 ? selectedIdx : 0;
+
+          optionsList.innerHTML = currentFilteredOptions.map((opt, idx) => {
             const isSelected = opt.value === select.value;
-            return `<div class="custom-select-option ${isSelected ? 'selected' : ''}" data-value="${escapeHtml(opt.value)}">
+            const isHighlighted = idx === highlightedIndex;
+            return `<div class="custom-select-option ${isSelected ? 'selected' : ''} ${isHighlighted ? 'highlighted' : ''}" data-value="${escapeHtml(opt.value)}" data-index="${idx}">
               <span>${escapeHtml(opt.text)}</span>
               ${isSelected ? '<span style="font-size:10px;">✓</span>' : ''}
             </div>`;
           }).join('');
+
+          highlightOption(highlightedIndex, true);
         }
 
-        optionsList.querySelectorAll('.custom-select-option').forEach((optEl) => {
+        optionsList.querySelectorAll('.custom-select-option').forEach((optEl, idx) => {
+          optEl.addEventListener('mouseenter', () => {
+            highlightOption(idx, false);
+          });
+
           optEl.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
             const val = optEl.dataset.value;
-            select.value = val;
-            syncDisplayValue();
-            closeAllPopups();
-            showLoading('Atualizando dashboard com filtros...');
-            select.dispatchEvent(new Event('change', { bubbles: true }));
+            selectOptionByValue(val);
           });
         });
       }
@@ -1849,6 +1964,7 @@ document.addEventListener('DOMContentLoaded', () => {
           updatePopupOptions('');
           popup.classList.add('open');
           control.classList.add('active-popup');
+          control.setAttribute('aria-expanded', 'true');
           const searchInput = popup.querySelector('.custom-select-search-input');
           if (searchInput) {
             searchInput.value = '';
@@ -1860,6 +1976,15 @@ document.addEventListener('DOMContentLoaded', () => {
       control.addEventListener('click', (e) => {
         if (e.target.closest('.custom-select-popup')) return;
         togglePopup(e);
+      });
+
+      control.addEventListener('keydown', (e) => {
+        if (e.target.closest('.custom-select-popup')) return;
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          togglePopup(e);
+        }
       });
     });
 
@@ -2503,6 +2628,21 @@ document.addEventListener('DOMContentLoaded', () => {
   setupExportButtons();
   setupChartHorizonControls();
   setupPanelFullscreen();
+
+  let chartResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(chartResizeTimer);
+    chartResizeTimer = setTimeout(() => {
+      if (charts && charts.instances) {
+        Object.values(charts.instances).forEach((instance) => {
+          if (instance && typeof instance.resize === 'function') {
+            instance.resize();
+          }
+        });
+      }
+    }, 100);
+  });
+
   loadAllData();
   setInterval(loadAllData, 300000);
 

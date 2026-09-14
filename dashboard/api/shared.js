@@ -121,7 +121,7 @@ function ehCadeiaLeite(projeto) {
   return true;
 }
 
-function isValidoLeite(nome_consultor, projeto, codigo_lr = null, tipo_ponto_atendimento = null) {
+function isValidoLeite(nome_consultor, projeto, codigo_lr = null, tipo_ponto_atendimento = null, tipo_visita = null) {
   if (isTestData(nome_consultor, projeto)) return false;
   if (codigo_lr) {
     const codUpper = String(codigo_lr).toUpperCase();
@@ -131,6 +131,7 @@ function isValidoLeite(nome_consultor, projeto, codigo_lr = null, tipo_ponto_ate
     const tipoUpper = String(tipo_ponto_atendimento).toUpperCase();
     if (tipoUpper.includes('SUPERVISAO') || tipoUpper.includes('SUPERVISÃO')) return false;
   }
+  if (tipo_visita && isTipoVisitaDescartado(tipo_visita)) return false;
   if (nome_consultor && isNonFieldConsultant(nome_consultor)) return false;
   if (!ehCadeiaLeite(projeto)) return false;
   return true;
@@ -162,13 +163,17 @@ function extractCleanProject(str, fallback = '') {
 function mapAgroindustria(projeto) {
   if (!projeto) return 'NÃO INFORMADA';
   const p = String(projeto).trim().toUpperCase();
+  if (p === 'LEITE' || p === 'GERAL' || p === 'NÃO INFORMADA' || p === 'NAO INFORMADA') return 'NÃO INFORMADA';
   if (p.includes('ALVOAR')) return 'Alvoar';
   if (p.includes('CCPR')) return 'CCPR';
-  if (p.includes('LPA') || p.includes('PORTO ALEGRE')) return 'Laticínios Porto Alegre';
+  if (p.includes('LPA') || p.includes('PORTO ALEGRE')) return 'Laticínios Porto Alegre (LPA)';
   if (p.includes('REGENERA') || p.includes('NESTLE') || p.includes('NESTLÉ')) return 'Nestlé';
   if (p.includes('SEMEAR') || p.includes('DANONE')) return 'Danone';
   if (p.includes('COPRIL')) return 'Copril';
-  if (p.includes('CAMPILEITE')) return 'Campileite';
+  if (p.includes('CAMPILEITE')) return 'CAMPILEITE';
+  if (p.includes('QUILLAYES')) return 'Quillayes';
+  if (p.includes('PIRACANJUBA')) return 'Piracanjuba';
+  if (p.includes('INDEPENDENTE')) return 'Independente';
   return projeto;
 }
 
@@ -251,16 +256,26 @@ function expandRows(rows) {
   return result;
 }
 
-function isTermoAdesao(tipo) {
+function isTipoVisitaDescartado(tipo) {
   if (!tipo) return false;
   const s = String(tipo).toUpperCase();
-  return s.includes('TERMO DE ADESAO') || s.includes('TERMO DE ADESÃO');
+  return s.includes('TERMO DE ADESAO') || 
+         s.includes('TERMO DE ADESÃO') || 
+         s.includes('INATIVAÇÃO') || 
+         s.includes('INATIVACAO') || 
+         s.includes('CADASTRO') || 
+         s.includes('EXCLUSÃO') || 
+         s.includes('EXCLUSAO') ||
+         s.includes('EFICIENCIA ALIMENTAR') ||
+         s.includes('EFICIÊNCIA ALIMENTAR');
 }
+
+const isTermoAdesao = isTipoVisitaDescartado;
 
 function deduplicateAndFilterVisits(visitas) {
   if (!visitas || !Array.isArray(visitas)) return [];
 
-  const semTermo = visitas.filter(v => !isTermoAdesao(v.tipo_visita));
+  const semTermo = visitas.filter(v => !isTipoVisitaDescartado(v.tipo_visita));
   const mapAtendimento = new Map();
   const semIdAtendimento = [];
 
@@ -308,6 +323,7 @@ module.exports = {
   shiftMonthMinus1,
   expandRows,
   isTermoAdesao,
+  isTipoVisitaDescartado,
   deduplicateAndFilterVisits
 };
 

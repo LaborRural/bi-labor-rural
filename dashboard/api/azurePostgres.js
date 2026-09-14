@@ -32,15 +32,35 @@ function fixMojibake(str) {
 const KNOWN_ACRONYMS = new Set(['AL', 'MG', 'SP', 'GO', 'CE', 'BA', 'SE', 'PE', 'RJ', 'PR', 'SC', 'RS', 'ES', 'MT', 'MS', 'RO', 'AC', 'AM', 'PA', 'MA', 'PI', 'RN', 'PB', 'TO', 'DF']);
 const LOWERCASE_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
 
+const UF_TO_CANONICAL_REGION = {
+  'BA': 'Bahia',
+  'CE': 'Ceará',
+  'AL': 'Alagoas',
+  'SE': 'Sergipe',
+  'PE': 'Pernambuco',
+  'MT': 'Campinápolis',
+  'GO': 'Goiânia',
+  'SP': 'Araçatuba'
+};
+
 function formatSingleRegionName(raw) {
   const str = fixMojibake(raw).trim();
   if (!str) return null;
 
   const explicitMap = {
+    'ba': 'Bahia',
+    'ce': 'Ceará',
+    'al': 'Alagoas',
+    'se': 'Sergipe',
+    'pe': 'Pernambuco',
+    'mt': 'Campinápolis',
+    'go': 'Goiânia',
+    'sp': 'Araçatuba',
     'alagoas': 'Alagoas',
     'aracatuba': 'Araçatuba',
     'bahia': 'Bahia',
-    'batalha/al': 'Batalha/AL',
+    'batalha/al': 'Alagoas',
+    'batalha': 'Alagoas',
     'ceara': 'Ceará',
     'goiania': 'Goiânia',
     'ibia': 'Ibiá',
@@ -50,10 +70,10 @@ function formatSingleRegionName(raw) {
     'minas gerais': 'Minas Gerais',
     'montes claros': 'Montes Claros',
     'patos de minas': 'Patos de Minas',
-    'pedra do forte': 'Pedra do Forte',
+    'pedra do forte': 'Bahia',
     'pernambuco': 'Pernambuco',
     'ponte nova': 'Ponte Nova',
-    'quixeramobim': 'Quixeramobim',
+    'quixeramobim': 'Ceará',
     'sergipe': 'Sergipe',
     'sertao norte': 'Sertão Norte',
     'sul de minas': 'Sul de Minas',
@@ -74,10 +94,16 @@ function formatSingleRegionName(raw) {
     return explicitMap[baseKey] + suffix;
   }
 
+  const baseUpper = base.toUpperCase().trim();
+  if (UF_TO_CANONICAL_REGION[baseUpper]) {
+    return UF_TO_CANONICAL_REGION[baseUpper] + suffix;
+  }
+
   // Fallback: Title Case com preservação de siglas
   const words = base.split(/\s+/);
   const formattedWords = words.map((w, idx) => {
     const wUpper = w.toUpperCase();
+    if (UF_TO_CANONICAL_REGION[wUpper]) return UF_TO_CANONICAL_REGION[wUpper];
     if (KNOWN_ACRONYMS.has(wUpper)) return wUpper;
     const wLower = w.toLowerCase();
     if (idx > 0 && LOWERCASE_WORDS.has(wLower)) return wLower;
@@ -142,21 +168,23 @@ function sanitizeRegiao(rawRegion, context = null) {
     if (nestleReg) return nestleReg;
   }
 
+  if (upper === 'BATALHA/AL' || upper.startsWith('BATALHA/')) {
+    return 'Alagoas';
+  }
+
   // 3. Se for composto por '/', tratar cada parte
   if (str.includes('/')) {
     const parts = str.split('/').map(p => p.trim()).filter(Boolean);
     const cleanParts = parts.map(part => formatSingleRegionName(part)).filter(Boolean);
     if (cleanParts.length === 0) return null;
 
-    // Preservar formato Cidade/UF (ex: BATALHA/AL)
-    const lastPart = cleanParts[cleanParts.length - 1];
-    if (cleanParts.length === 2 && KNOWN_ACRONYMS.has(lastPart.toUpperCase())) {
-      return `${cleanParts[0]}/${lastPart.toUpperCase()}`;
-    }
+    // Deduplicate (ex: Alagoas/Alagoas -> Alagoas)
+    const uniqueParts = [...new Set(cleanParts)];
+    if (uniqueParts.length === 1) return uniqueParts[0];
 
     // Ordenar alfabeticamente para estados compostos (ex: Sergipe/Bahia -> Bahia/Sergipe)
-    cleanParts.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    return cleanParts.join('/');
+    uniqueParts.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return uniqueParts.join('/');
   }
 
   return formatSingleRegionName(str);
@@ -164,7 +192,7 @@ function sanitizeRegiao(rawRegion, context = null) {
 
 // ─── Consulta ao Banco de Dados ─────────────────────────────────────────────
 
-const { fetchWithCache, sanitizeConsultorList, isNonFieldConsultant, extractCleanProject } = require('./shared');
+const { fetchWithCache, sanitizeConsultorList, isNonFieldConsultant, extractCleanProject, mapAgroindustria } = require('./shared');
 
 /**
  * Consulta a tabela canônica sq_dim_regiao do Supabase.
@@ -219,6 +247,22 @@ async function getDimRegioesMap(supabase) {
 async function getRegiaoMap(supabase, fetchAll) {
   return fetchWithCache('GLOBAL_REGIAO_MAP', async () => {
     const regiaoMap = new Map();
+    const dimRegioes = await getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map() }));
+
+    function resolveCanonical(raw, agro) {
+      if (!raw) return null;
+      const rawTrim = String(raw).trim();
+      if (agro) {
+        const agroKey = `${String(agro).trim().toUpperCase()}|${rawTrim.toUpperCase()}`;
+        if (dimRegioes.deParaMap && dimRegioes.deParaMap.has(agroKey)) {
+          return dimRegioes.deParaMap.get(agroKey);
+        }
+      }
+      if (dimRegioes.deParaMap && dimRegioes.deParaMap.has(rawTrim.toUpperCase())) {
+        return dimRegioes.deParaMap.get(rawTrim.toUpperCase());
+      }
+      return sanitizeRegiao(raw, agro);
+    }
 
     if (process.env.PG_HOST && process.env.PG_USER && process.env.PG_PASSWORD) {
       try {
@@ -233,10 +277,10 @@ async function getRegiaoMap(supabase, fetchAll) {
         });
         await client.connect();
         const schema = process.env.PG_SCHEMA || 'analytics_mart';
-        const res = await client.query(`SELECT labor_rural_code, dairy_region FROM ${schema}.vw_dim_property WHERE dairy_region IS NOT NULL AND labor_rural_code IS NOT NULL AND property_status = 'active_approved';`);
+        const res = await client.query(`SELECT labor_rural_code, dairy_region, agroindustry_name FROM ${schema}.vw_dim_property WHERE dairy_region IS NOT NULL AND labor_rural_code IS NOT NULL AND property_status = 'active_approved';`);
         (res.rows || []).forEach(r => {
           if (r.labor_rural_code && r.dairy_region) {
-            const cleanRegiao = sanitizeRegiao(r.dairy_region);
+            const cleanRegiao = resolveCanonical(r.dairy_region, r.agroindustry_name);
             if (cleanRegiao) {
               regiaoMap.set(String(r.labor_rural_code).trim(), cleanRegiao);
             }
@@ -255,14 +299,14 @@ async function getRegiaoMap(supabase, fetchAll) {
       const fazendasDB = await fetchAll(() =>
         supabase
           .from('sq_dim_fazendas_ativas')
-          .select('codigo_produtor, regiao')
+          .select('codigo_produtor, regiao, agroindustria')
           .not('regiao', 'is', null)
       );
       (fazendasDB || []).forEach(f => {
         const cod = f.codigo_produtor;
         const reg = f.regiao;
         if (cod && reg) {
-          const cleanRegiao = sanitizeRegiao(reg);
+          const cleanRegiao = resolveCanonical(reg, f.agroindustria);
           if (cleanRegiao) {
             regiaoMap.set(String(cod).trim(), cleanRegiao);
             regiaoMap.set(String(cod).trim().toUpperCase(), cleanRegiao);
@@ -319,7 +363,7 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
                 nome_propriedade: r.nome_propriedade,
                 nome_consultor: consultor,
                 projeto: cleanProj || null,
-                agroindustria: r.agroindustria || null,
+                agroindustria: mapAgroindustria(r.agroindustria || cleanProj),
                 regiao: r.regiao || null,
                 unidade_atendimento: r.unidade_atendimento,
                 data_referencia: r.mes_referencia,
@@ -362,6 +406,7 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
               nome_propriedade: r.nome_propriedade,
               nome_consultor: consultor,
               projeto: cleanProj || null,
+              agroindustria: mapAgroindustria(cleanProj),
               unidade_atendimento: r.unidade_atendimento,
               data_referencia: refMonth,
               status: r.status
@@ -403,6 +448,7 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
             nome_propriedade: r.nome_propriedade,
             nome_consultor: consultor,
             projeto: r.projeto,
+            agroindustria: mapAgroindustria(r.projeto),
             unidade_atendimento: r.unidade_atendimento,
             data_referencia: refMonth || (r.data_associacao ? r.data_associacao.slice(0, 7) + '-01' : null),
             status: r.vinculo_ativo ? 'ATIVO' : 'INATIVO'

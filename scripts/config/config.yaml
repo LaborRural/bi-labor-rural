@@ -10,8 +10,8 @@ caminhos:
   bd_smartquestion: "C:/Users/Guilherme/LABOR RURAL/Analytics - Departamento Analytics/POWER_BI/PROJETOS/BI_LABOR_RURAL/BD_SMARTQUESTION"
   
   # Pastas de origem dos relatórios do Elabore (Consistência)
-  elabore_mensal: "C:/Users/Guilherme/LABOR RURAL/Analytics - Departamento Analytics/TEMP/GUILHERME/SCRIPTS/projetcs/elabore-views/data/outputs/monthly"
-  elabore_anual: "C:/Users/Guilherme/LABOR RURAL/Analytics - Departamento Analytics/TEMP/GUILHERME/SCRIPTS/projetcs/elabore-views/data/outputs/annual"
+  elabore_mensal: "C:/Users/Guilherme/LABOR RURAL/Analytics - Departamento Analytics/FERRAMENTAS/ELABORE/ELABORE_NOVO_SISTEMA/ANALISE_INDICADORES/lr-indicadores-elabore/data/outputs/monthly"
+  elabore_anual: "C:/Users/Guilherme/LABOR RURAL/Analytics - Departamento Analytics/FERRAMENTAS/ELABORE/ELABORE_NOVO_SISTEMA/ANALISE_INDICADORES/lr-indicadores-elabore/data/outputs/annual"
   
   # Pastas internas do projeto
   input: "db/input"

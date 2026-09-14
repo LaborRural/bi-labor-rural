@@ -25,10 +25,13 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const supabase = getSupabaseClient();
-    const { getRegiaoMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
-    const regiaoMap = await getRegiaoMap(supabase, fetchAll);
+    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
+    const [regiaoMap, dimRegioesData] = await Promise.all([
+      getRegiaoMap(supabase, fetchAll),
+      getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map() }))
+    ]);
 
-    function getRegiao(codigoLr, fallback, projeto = null) {
+    function getRegiao(codigoLr, fallback, agroindustria = null, projeto = null) {
       let reg = null;
       if (codigoLr && regiaoMap.has(String(codigoLr).trim())) {
         reg = regiaoMap.get(String(codigoLr).trim());
@@ -36,6 +39,17 @@ module.exports = async (req, res) => {
         reg = fallback;
       }
       if (reg) {
+        const rawTrim = String(reg).trim();
+        const agro = agroindustria || (projeto ? mapAgroindustria(projeto) : null);
+        if (agro) {
+          const agroKey = `${agro.toUpperCase()}|${rawTrim.toUpperCase()}`;
+          if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(agroKey)) {
+            return dimRegioesData.deParaMap.get(agroKey);
+          }
+        }
+        if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(rawTrim.toUpperCase())) {
+          return dimRegioesData.deParaMap.get(rawTrim.toUpperCase());
+        }
         const clean = sanitizeRegiao(reg, projeto);
         if (clean) return clean;
       }
@@ -170,10 +184,10 @@ module.exports = async (req, res) => {
         const mensalDirect = mensalRefMap.get(`${cdLrUpper}_${mKey}`) || mensalRefMap.get(cdLrUpper);
         const anualDirect = anualRefMap.get(`${cdLrUpper}_${mKey}`) || anualRefMap.get(cdLrUpper);
 
-        const rawMensalVal = c.consistencia_mensal || (mensalDirect ? mensalDirect.consistencia_mensal : null);
+        const rawMensalVal = (mensalDirect && mensalDirect.consistencia_mensal) ? mensalDirect.consistencia_mensal : c.consistencia_mensal;
         const hasNoMensalRecord = !rawMensalVal;
         const statusConsist = String(rawMensalVal || '').toLowerCase();
-        const detalheConsist = c.detalhamento_inconsistencia || (mensalDirect ? mensalDirect.detalhamento_inconsistencia : null);
+        const detalheConsist = (mensalDirect && mensalDirect.detalhamento_inconsistencia !== undefined) ? mensalDirect.detalhamento_inconsistencia : c.detalhamento_inconsistencia;
 
         const refMonthStr = String(c.mes_referencia || '').slice(0, 7);
         const isCinthiaMissingMay = (c.codigo_lr === 'LR10245' || String(c.nome_produtor || '').toLowerCase().includes('cinthia')) && refMonthStr === '2026-05';
@@ -191,8 +205,10 @@ module.exports = async (req, res) => {
           semDados++;
         }
 
-        const rawAnualVal = c.consistencia_anual || (anualDirect ? anualDirect.consistencia_anual : null);
-        const detalheConsistAnual = c.detalhamento_inconsistencia || (anualDirect ? anualDirect.detalhamento_inconsistencia : null);
+        const rawAnualVal = (anualDirect && anualDirect.consistencia_anual) ? anualDirect.consistencia_anual : c.consistencia_anual;
+        const detalheConsistAnual = (anualDirect && anualDirect.detalhamento_inconsistencia !== undefined)
+          ? anualDirect.detalhamento_inconsistencia
+          : (c.consistencia_anual && c.consistencia_anual !== 'Consistente' ? c.detalhamento_inconsistencia : null);
         const statusAnualStr = String(rawAnualVal || '').toLowerCase();
         const isAnualSemDados = !rawAnualVal || statusAnualStr.includes('sem dados') || statusAnualStr.includes('sem_dados') || statusAnualStr.includes('não calculated') || statusAnualStr.includes('nao calculado');
         const isAnualConsist = !isAnualSemDados && statusAnualStr.includes('consistente') && !statusAnualStr.includes('inconsistente');

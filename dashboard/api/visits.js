@@ -7,6 +7,7 @@ const {
   ehCadeiaLeite,
   isValidoLeite,
   mapAgroindustria,
+  isTipoVisitaDescartado,
   deduplicateAndFilterVisits
 } = require('./shared');
 
@@ -29,10 +30,13 @@ module.exports = async (req, res) => {
     const isAllMonths = !/^\d{4}-\d{2}-\d{2}$/.test(requestedMonth);
     const refMonth = isAllMonths ? null : requestedMonth;
 
-    const { getRegiaoMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
-    const regiaoMap = await getRegiaoMap(supabase, fetchAll);
+    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
+    const [regiaoMap, dimRegioesData] = await Promise.all([
+      getRegiaoMap(supabase, fetchAll),
+      getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map() }))
+    ]);
 
-    function getRegiao(codigoLr, fallback, projeto = null) {
+    function getRegiao(codigoLr, fallback, agroindustria = null, projeto = null) {
       let reg = null;
       if (codigoLr && regiaoMap.has(String(codigoLr).trim())) {
         reg = regiaoMap.get(String(codigoLr).trim());
@@ -40,6 +44,17 @@ module.exports = async (req, res) => {
         reg = fallback;
       }
       if (reg) {
+        const rawTrim = String(reg).trim();
+        const agro = agroindustria || (projeto ? mapAgroindustria(projeto) : null);
+        if (agro) {
+          const agroKey = `${agro.toUpperCase()}|${rawTrim.toUpperCase()}`;
+          if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(agroKey)) {
+            return dimRegioesData.deParaMap.get(agroKey);
+          }
+        }
+        if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(rawTrim.toUpperCase())) {
+          return dimRegioesData.deParaMap.get(rawTrim.toUpperCase());
+        }
         const clean = sanitizeRegiao(reg, projeto);
         if (clean) return clean;
       }
@@ -84,7 +99,8 @@ module.exports = async (req, res) => {
       fetchAll(() => {
         let q = supabase
           .from('sq_fato_visitas')
-          .select('codigo_lr, nome_consultor, nome_produtor, projeto, mes_referencia, id_atendimento, tipo_visita');
+          .select('codigo_lr, nome_consultor, nome_produtor, projeto, mes_referencia, id_atendimento, tipo_visita')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR');
         if (refMonth) q = q.eq('mes_referencia', refMonth);
         return q.order('codigo_lr', { ascending: true });
       }).catch(() => [])
@@ -99,6 +115,7 @@ module.exports = async (req, res) => {
         fetchAll(() => supabase
           .from('sq_raw_visitas')
           .select('id_atendimento, codigo_lr, nome_consultor, nome_produtor, data_visita, tipo_visita')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR')
           .gte('data_visita', dtInicio)
           .lte('data_visita', dtFim)
           .order('data_visita', { ascending: false })).catch(() => [])
@@ -116,7 +133,7 @@ module.exports = async (req, res) => {
 
 
     const produtoresFiltrados = (produtoresBrutos || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto)).filter(rowMatches);
-    const visitasFiltradas = (visitasBrutas || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto)).filter(rowMatches);
+    const visitasFiltradas = (visitasBrutas || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr, null, v.tipo_visita)).filter(rowMatches);
 
     const totalAtivos = produtoresFiltrados.length;
     const totalVisitas = visitasFiltradas.length;

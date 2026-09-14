@@ -34,7 +34,7 @@ module.exports = async (req, res) => {
         try {
           const { data } = await supabase
             .from('sq_dim_agroindustria')
-            .select('nome_agroindustria')
+            .select('*')
             .eq('status', 'Ativo')
             .eq('excluido', 0);
           return data || [];
@@ -49,7 +49,22 @@ module.exports = async (req, res) => {
       getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map(), regioesPorAgro: new Map(), todasRegioesFormatadas: [] }))
     ]);
 
-    const agroindustriasOficiais = (agrosDB || []).map(a => a.nome_agroindustria).filter(Boolean).filter(ehCadeiaLeite);
+    const agroindustriasOficiais = (agrosDB || [])
+      .map(a => {
+        const raw = a.nome_agroindustria;
+        const formatada = a.nome_agroindustria_formatada;
+        if (formatada) return formatada;
+        if (raw === 'Laticínios Porto Alegre' || String(raw).toUpperCase().includes('PORTO ALEGRE')) {
+          return 'Laticínios Porto Alegre (LPA)';
+        }
+        return mapAgroindustria(raw);
+      })
+      .filter(Boolean)
+      .filter(ehCadeiaLeite);
+
+    if (!agroindustriasOficiais.includes('NÃO INFORMADA')) {
+      agroindustriasOficiais.push('NÃO INFORMADA');
+    }
 
     const profissaoMap = new Map();
     (consultoresDB || []).forEach(c => {
@@ -114,19 +129,21 @@ module.exports = async (req, res) => {
       try {
         let q = supabase
           .from('sq_fato_visitas')
-          .select('id, codigo_lr, nome_consultor, nome_produtor, nome_propriedade, data_visita, id_atendimento, projeto, mes_referencia, tipo_visita, valor_pago_produtor, valor_pago_agroindustria');
+          .select('id, codigo_lr, nome_consultor, nome_produtor, nome_propriedade, data_visita, id_atendimento, projeto, mes_referencia, tipo_visita, valor_pago_produtor, valor_pago_agroindustria')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR');
         if (visitasMonth) q = q.eq('mes_referencia', visitasMonth);
         return await fetchAll(() => q.order('data_visita', { ascending: false }));
       } catch (e) {
         let q = supabase
           .from('sq_fato_visitas')
-          .select('id, codigo_lr, nome_consultor, nome_produtor, nome_propriedade, data_visita, id_atendimento, projeto, mes_referencia, tipo_visita');
+          .select('id, codigo_lr, nome_consultor, nome_produtor, nome_propriedade, data_visita, id_atendimento, projeto, mes_referencia, tipo_visita')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR');
         if (visitasMonth) q = q.eq('mes_referencia', visitasMonth);
         return await fetchAll(() => q.order('data_visita', { ascending: false })).catch(() => []);
       }
     });
 
-    let visitasList = (visitasListRaw || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr));
+    let visitasList = (visitasListRaw || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr, null, v.tipo_visita));
 
     if (visitasList.length === 0 && visitasMonth) {
       const [anoRef, mesRef] = visitasMonth.split('-');
@@ -137,6 +154,7 @@ module.exports = async (req, res) => {
         fetchAll(() => supabase
           .from('sq_raw_visitas')
           .select('id_atendimento, codigo_lr, nome_consultor, nome_produtor, data_visita, tipo_visita, valor_pago_produtor, valor_pago_agroindustria')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR')
           .gte('data_visita', dtInicio)
           .lte('data_visita', dtFim)
           .order('data_visita', { ascending: false })).catch(() => [])
@@ -147,11 +165,11 @@ module.exports = async (req, res) => {
           nome_propriedade: 'PROPRIEDADE',
           projeto: 'Leite',
           mes_referencia: visitasMonth
-        })).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr));
+        })).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr, null, v.tipo_visita));
       }
     }
 
-    // Deduplicação por id_atendimento e remoção de Termos de Adesão
+    // Deduplicação por id_atendimento e remoção de registros inválidos/administrativos (inclusive EFICIENCIA ALIMENTAR)
     visitasList = deduplicateAndFilterVisits(visitasList);
 
     // 5. Histórico completo com cache
@@ -160,6 +178,7 @@ module.exports = async (req, res) => {
         fetchAll(() => supabase
           .from('sq_fato_visitas')
           .select('codigo_lr, nome_consultor, nome_produtor, projeto, mes_referencia, data_visita, id_atendimento, tipo_visita')
+          .neq('tipo_visita', 'EFICIENCIA ALIMENTAR')
           .order('mes_referencia', { ascending: false })
           .order('codigo_lr', { ascending: true })).catch(() => [])
       ),
@@ -172,7 +191,7 @@ module.exports = async (req, res) => {
       )
     ]);
 
-    const visitasHistoricas = deduplicateAndFilterVisits((visitasHistoricasRaw || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr)));
+    const visitasHistoricas = deduplicateAndFilterVisits((visitasHistoricasRaw || []).filter(v => isValidoLeite(v.nome_consultor, v.projeto, v.codigo_lr, null, v.tipo_visita)));
 
     const produtoresHistoricos = (produtoresHistoricosRaw || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto, p.codigo_lr, p.tipo_ponto_atendimento));
 
@@ -347,7 +366,8 @@ module.exports = async (req, res) => {
       .filter(m => m <= maxAllowedMonth)
       .sort();
 
-    const referencias = todosMesesDisponiveis.filter(ref => !visitasMonth || ref <= visitasMonth);
+    const MINIMO_MES_HISTORICO = '2026-01-01';
+    const referencias = todosMesesDisponiveis.filter(ref => ref >= MINIMO_MES_HISTORICO && (!visitasMonth || ref <= visitasMonth));
     const visitasPorMes = new Map();
     const ativosPorMes = new Map();
     (visitasHistFiltradas || []).forEach(v => {

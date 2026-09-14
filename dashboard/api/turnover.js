@@ -19,10 +19,13 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const supabase = getSupabaseClient();
-    const { getRegiaoMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
-    const regiaoMap = await getRegiaoMap(supabase, fetchAll);
+    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
+    const [regiaoMap, dimRegioesData] = await Promise.all([
+      getRegiaoMap(supabase, fetchAll),
+      getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map() }))
+    ]);
 
-    function getRegiao(codigoLr, fallback, projeto = null) {
+    function getRegiao(codigoLr, fallback, agroindustria = null, projeto = null) {
       let reg = null;
       if (codigoLr && regiaoMap.has(String(codigoLr).trim())) {
         reg = regiaoMap.get(String(codigoLr).trim());
@@ -30,6 +33,17 @@ module.exports = async (req, res) => {
         reg = fallback;
       }
       if (reg) {
+        const rawTrim = String(reg).trim();
+        const agro = agroindustria || (projeto ? mapAgroindustria(projeto) : null);
+        if (agro) {
+          const agroKey = `${agro.toUpperCase()}|${rawTrim.toUpperCase()}`;
+          if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(agroKey)) {
+            return dimRegioesData.deParaMap.get(agroKey);
+          }
+        }
+        if (dimRegioesData.deParaMap && dimRegioesData.deParaMap.has(rawTrim.toUpperCase())) {
+          return dimRegioesData.deParaMap.get(rawTrim.toUpperCase());
+        }
         const clean = sanitizeRegiao(reg, projeto);
         if (clean) return clean;
       }
