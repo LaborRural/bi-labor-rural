@@ -73,7 +73,7 @@ def extrair_consultor_individual(consultor_str: str, grupo_str: str = "") -> str
     return "NÃO ATRIBUÍDO"
 
 
-def executar_reconciliacao():
+def executar_reconciliacao(reindex_completo: bool = False):
     print("=================================================================")
     print("   INICIANDO RECONCILIAÇÃO DE VÍNCULOS, INATIVAÇÕES E ATIVOS     ")
     print("=================================================================")
@@ -846,6 +846,25 @@ def executar_reconciliacao():
     else:
         print("   ⚠️ Nenhum vínculo encontrado em sq_raw_vinculos.")
 
+    # ── FONTE DE VERDADE: Ler BD_BI_VINCULOS_COMPLETO.xlsx para saber quem está ATIVO oficialmente ──
+    # O campo vinculo_ativo em sq_raw_vinculos pode estar obsoleto (ETL antigo não deletou registros).
+    # Produtores inativados e removidos da planilha mestre devem ser excluídos de sq_dim_fazendas_ativas.
+    codigos_ativos_excel: set = set()
+    try:
+        arq_vinc_excel = bd_path / "BD_BI_VINCULOS_COMPLETO.xlsx"
+        if arq_vinc_excel.exists():
+            try:
+                from functions.carregar_fato_visitas import ler_excel_seguro
+            except ImportError:
+                from carregar_fato_visitas import ler_excel_seguro
+            df_vinc_ex = ler_excel_seguro(arq_vinc_excel)
+            if "Ativo" in df_vinc_ex.columns and "Código LR" in df_vinc_ex.columns:
+                m_at_ex = df_vinc_ex["Ativo"].astype(str).str.strip().str.lower().isin(["true", "sim", "ativo", "1"])
+                codigos_ativos_excel = set(df_vinc_ex[m_at_ex]["Código LR"].dropna().astype(str).str.strip().str.upper())
+                print(f"   -> {len(codigos_ativos_excel)} vínculos ativos confirmados em BD_BI_VINCULOS_COMPLETO.xlsx (fonte de verdade).")
+    except Exception as e_vinc_ex2:
+        print(f"   ℹ️ Aviso ao ler BD_BI_VINCULOS_COMPLETO.xlsx para dim_fazendas_ativas: {e_vinc_ex2}")
+
     for ref_m in meses_reconciliacao:
         novos_ativos_m = []
 
@@ -872,18 +891,22 @@ def executar_reconciliacao():
                 continue
 
             # 1. Se a data de associação for posterior ao mês avaliado, ainda não existia
-            v_ativo = r.get("vinculo_ativo")
             dt_assoc = r.get("data_associacao")
             dt_assoc_p = pd.to_datetime(dt_assoc, errors="coerce")
-            
+
             if pd.notna(dt_assoc_p) and dt_assoc_p.strftime("%Y-%m-01") > ref_m:
                 continue
 
-            # 2. Se o produtor foi inativado em data <= ref_m: já estava inativo
-            if c in inativacoes_por_codigo and inativacoes_por_codigo[c] <= ref_m:
+            # 2. REGRA PRINCIPAL: Usar BD_BI_VINCULOS_COMPLETO.xlsx como fonte de verdade.
+            # Se o produtor TEM inativação registrada E NÃO está ativo na planilha oficial
+            # -> está inativo neste mês (se a inativação já ocorreu).
+            # Se está ativo na planilha oficial (ex: LR06033), o status ATIVO prevalece.
+            is_ativo_excel = c.upper() in codigos_ativos_excel
+            if not is_ativo_excel and c in inativacoes_por_codigo and inativacoes_por_codigo[c] <= ref_m:
                 continue
 
-            # 3. Se vinculo_ativo é False e o produtor já estava inativo
+            # 3. Se vinculo_ativo é False no Supabase e o produtor já estava inativo
+            v_ativo = r.get("vinculo_ativo")
             if v_ativo is False and c in inativacoes_por_codigo:
                 continue
 

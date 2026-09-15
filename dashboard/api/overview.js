@@ -242,8 +242,8 @@ module.exports = async (req, res) => {
     const produtoresHistFiltrados = (produtoresHistoricos || []).filter(rowMatches);
     const visitasHistFiltradas = (visitasHistoricas || []).filter(rowMatches);
 
-    // 6. Consultar movimentação e consistência com cache
-    const [movimentacoes, consistenciaList, elaboreMensalList] = await Promise.all([
+    // 6. Consultar movimentação, inativações e consistência com cache
+    const [movimentacoes, consistenciaList, elaboreMensalList, inativacoesList] = await Promise.all([
       fetchWithCache('FATO_MOVIMENTACAO', () =>
         fetchAll(() => supabase
           .from('sq_fato_movimentacao')
@@ -267,8 +267,22 @@ module.exports = async (req, res) => {
           if (consistencyMonth) q = q.eq('mes_referencia', consistencyMonth);
           return q.order('mes_referencia', { ascending: false });
         }).catch(() => [])
+      ),
+      fetchWithCache('RAW_INATIVACOES_PRODUTOR_OVERVIEW', () =>
+        fetchAll(() => supabase
+          .from('sq_raw_inativacoes_produtor')
+          .select('codigo_lr')).catch(() => [])
       )
     ]);
+
+    const inativacoesSet = new Set();
+    (inativacoesList || []).forEach(i => {
+      if (i.codigo_lr) inativacoesSet.add(String(i.codigo_lr).trim().toUpperCase());
+    });
+    (movimentacoes || []).forEach(m => {
+      const isSaida = String(m.movimentacao || '').toLowerCase().includes('sa') || Boolean(m.motivo_inativacao);
+      if (isSaida && m.codigo_lr) inativacoesSet.add(String(m.codigo_lr).trim().toUpperCase());
+    });
 
     const fonteElabore = (elaboreMensalList && elaboreMensalList.length > 0) ? elaboreMensalList : (consistenciaList || []);
 
@@ -515,6 +529,44 @@ module.exports = async (req, res) => {
           : '—';
 
         const agro = mapAgroindustria(p.projeto);
+
+        // Classificação do Status na tabela Produtores sem visita
+        const temInativacao = inativacoesSet.has(codNorm);
+        let statusSemVisita = 'Sem visita no período';
+        let statusBadgeClass = 'badge-warning';
+
+        if (temInativacao) {
+          statusSemVisita = 'Inativação Pendente';
+          statusBadgeClass = 'badge-danger';
+        } else if (!dataUltimaVisita) {
+          const diffAssocMs = dataAssoc ? (dataCorte.getTime() - dataAssoc.getTime()) : null;
+          const diasAssoc = diffAssocMs !== null ? Math.max(0, Math.floor(diffAssocMs / (1000 * 60 * 60 * 24))) : null;
+          if (diasAssoc !== null && diasAssoc <= 45) {
+            statusSemVisita = 'Vínculo Recente';
+            statusBadgeClass = 'badge-positive';
+          } else {
+            statusSemVisita = 'Nunca visitado';
+            statusBadgeClass = 'badge-danger';
+          }
+        } else if (diasSemVisita !== null && diasSemVisita !== undefined) {
+          if (diasSemVisita >= 60) {
+            statusSemVisita = 'Sem visita > 60 dias';
+            statusBadgeClass = 'badge-danger';
+          } else if (diasSemVisita >= 45) {
+            statusSemVisita = 'Sem visita > 45 dias';
+            statusBadgeClass = 'badge-warning';
+          } else if (diasSemVisita >= 30) {
+            statusSemVisita = 'Sem visita > 30 dias';
+            statusBadgeClass = 'badge-warning';
+          } else if (diasSemVisita <= 0) {
+            statusSemVisita = 'Vínculo Recente';
+            statusBadgeClass = 'badge-positive';
+          } else {
+            statusSemVisita = `Sem visita (${diasSemVisita}d)`;
+            statusBadgeClass = 'badge-warning';
+          }
+        }
+
         return {
           consultor: p.nome_consultor || 'NÃO ATRIBUÍDO',
           codigo_lr: p.codigo_lr || '-',
@@ -523,7 +575,8 @@ module.exports = async (req, res) => {
           agroindustria: agro,
           regiao: getRegiao(p.codigo_lr, p.regiao || p.unidade_atendimento, agro, p.projeto),
           projeto: p.projeto || 'NÃO INFORMADO',
-          status: 'ATIVO',
+          status: statusSemVisita,
+          status_class: statusBadgeClass,
           mes_referencia: visitasMonth,
           data_associacao: dataExibicao,
           data_vinculacao: dataExibicao,

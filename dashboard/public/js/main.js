@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
       industry: el('filterIndustry')?.value || '',
       region: el('filterRegion')?.value || '',
       project: el('filterProject')?.value || '',
-      status: el('filterStatus')?.value || '',
+      status: '',
       consultant: el('filterConsultant')?.value || '',
       producer: el('filterProducer')?.value || '',
       month: el('filterMonth')?.value || ''
@@ -1009,15 +1009,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (colKey === 'dias_sem_visita') {
           rowVal = String(row.dias_sem_visita ?? '');
         } else if (colKey === 'status') {
-          if (row.dias_sem_visita !== undefined) {
+          if (row.status && row.status !== 'ATIVO') {
+            rowVal = String(row.status);
+          } else if (row.dias_sem_visita !== undefined) {
             const hasDays = row.dias_sem_visita !== null && row.dias_sem_visita !== undefined && row.dias_sem_visita !== '';
             const days = hasDays ? Number(row.dias_sem_visita) : null;
             rowVal = !hasDays ? 'sem visita no período' :
-                     isGrave ? 'sem visita > 60 dias' :
+                     days >= 60 ? 'sem visita > 60 dias' :
                      days >= 45 ? 'sem visita > 45 dias' :
                      days >= 30 ? 'sem visita > 30 dias' :
                      days > 0 ? `sem visita (${days}d)` :
-                     'vínculo recente (0d)';
+                     'vínculo recente';
           } else {
             rowVal = String(row.status || 'ativo');
           }
@@ -1086,16 +1088,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el('tbodySemVisita')) el('tbodySemVisita').innerHTML = rowsOrEmpty(pWithoutVisit, 8, (row) => {
       const hasDays = row.dias_sem_visita !== null && row.dias_sem_visita !== undefined && row.dias_sem_visita !== '';
       const days = hasDays ? Number(row.dias_sem_visita) : null;
-      const isGrave = hasDays && days >= 60;
-      const isZero = hasDays && days <= 0;
-      const status = !hasDays ? 'Sem visita no período' :
-                     isGrave ? 'Sem visita > 60 dias' :
-                     days >= 45 ? 'Sem visita > 45 dias' :
-                     days >= 30 ? 'Sem visita > 30 dias' :
-                     days > 0 ? `Sem visita (${days}d)` :
-                     'Vínculo recente (0d)';
-      const rowClass = isGrave ? 'table-row-grave' : (isZero ? '' : 'table-row-pending');
-      const badgeClass = isGrave ? 'badge-danger' : (isZero ? 'badge-positive' : 'badge-warning');
+      
+      let status = row.status && row.status !== 'ATIVO' ? row.status : '';
+      let badgeClass = row.status_class || '';
+
+      if (!status) {
+        const isGrave = hasDays && days >= 60;
+        const isZero = hasDays && days <= 0;
+        status = !hasDays ? 'Sem visita no período' :
+                 isGrave ? 'Sem visita > 60 dias' :
+                 days >= 45 ? 'Sem visita > 45 dias' :
+                 days >= 30 ? 'Sem visita > 30 dias' :
+                 days > 0 ? `Sem visita (${days}d)` :
+                 'Vínculo Recente';
+        badgeClass = isGrave ? 'badge-danger' : (isZero ? 'badge-positive' : 'badge-warning');
+      }
+
+      if (!badgeClass) {
+        if (status === 'Inativação Pendente' || status === 'Nunca visitado' || status.includes('> 60')) {
+          badgeClass = 'badge-danger';
+        } else if (status.includes('Recente')) {
+          badgeClass = 'badge-positive';
+        } else {
+          badgeClass = 'badge-warning';
+        }
+      }
+
+      const rowClass = badgeClass === 'badge-danger' ? 'table-row-grave' : (badgeClass === 'badge-positive' ? '' : 'table-row-pending');
       const dtAssoc = row.data_associacao || row.data_vinculacao || row.data_referencia || '—';
       const dtVisitaMesAnterior = row.data_visita_mes_anterior || '—';
       const dtUltimaVisita = row.data_ultima_visita || '—';
@@ -1435,21 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
       syncCustomSelectDisplay('filterProject');
     }
 
-    // 4. Status
-    const statSelect = el('filterStatus');
-    if (statSelect) {
-      const prevVal = normalizeStatus(statSelect.value);
-      const validRows = rows.filter((r) => matchesActiveExcept(r, 'status'));
-      const availableStatuses = new Set(validRows.map((r) => r.status));
-      const ordered = ['ATIVO', 'INATIVO'].filter((val) => availableStatuses.has(val));
-      const labels = { ATIVO: 'Ativa', INATIVO: 'Inativo' };
-      statSelect.innerHTML = `<option value="">Todos</option>${ordered.map((val) => `<option value="${val}">${labels[val]}</option>`).join('')}`;
-      if (ordered.includes(prevVal)) statSelect.value = prevVal;
-      else statSelect.value = '';
-      syncCustomSelectDisplay('filterStatus');
-    }
-
-    // 5. Consultor
+    // 4. Consultor
     const consultSelect = el('filterConsultant');
     if (consultSelect) {
       const prevVal = consultSelect.value;
@@ -1500,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
           r.data_associacao || r.data_vinculacao || '—',
           r.data_ultima_visita || '—',
           r.dias_sem_visita !== null && r.dias_sem_visita !== undefined ? r.dias_sem_visita : '—',
-          r.dias_sem_visita >= 60 ? 'Sem visita > 60 dias' : (r.dias_sem_visita >= 45 ? 'Sem visita > 45 dias' : (r.dias_sem_visita >= 30 ? 'Sem visita > 30 dias' : 'Sem visita no período'))
+          r.status && r.status !== 'ATIVO' ? r.status : (r.dias_sem_visita >= 60 ? 'Sem visita > 60 dias' : (r.dias_sem_visita >= 45 ? 'Sem visita > 45 dias' : (r.dias_sem_visita >= 30 ? 'Sem visita > 30 dias' : 'Sem visita no período')))
         ])
       };
     }
@@ -2018,7 +2023,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Eventos de filtros com suporte a filtragem cruzada multidirecional estilo Power BI
-  ['filterIndustry', 'filterRegion', 'filterProject', 'filterStatus', 'filterConsultant', 'filterProducer']
+  ['filterIndustry', 'filterRegion', 'filterProject', 'filterConsultant', 'filterProducer']
     .forEach((id) => el(id)?.addEventListener('change', handleFilterSelectionChange));
   el('filterMonth')?.addEventListener('change', async () => {
     state.hasUserChangedMonth = true;

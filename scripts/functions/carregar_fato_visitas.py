@@ -93,6 +93,48 @@ def buscar_todos_registros(supabase: Client, tabela: str, select_cols: str = "*"
     return pd.DataFrame(todos_registros)
 
 
+def ler_excel_seguro(caminho_excel, **kwargs):
+    """Lê um arquivo Excel com suporte a arquivos abertos no Excel (evita PermissionError/Errno 13 no Windows)."""
+    caminho = Path(caminho_excel)
+    try:
+        return pd.read_excel(caminho, **kwargs)
+    except (PermissionError, OSError):
+        try:
+            import msvcrt, ctypes, tempfile
+            from ctypes import wintypes
+
+            GENERIC_READ = 0x80000000
+            FILE_SHARE_READ = 0x00000001
+            FILE_SHARE_WRITE = 0x00000002
+            FILE_SHARE_DELETE = 0x00000004
+            OPEN_EXISTING = 3
+            FILE_ATTRIBUTE_NORMAL = 0x80
+
+            kernel32 = ctypes.windll.kernel32
+            CreateFileW = kernel32.CreateFileW
+            CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+            CreateFileW.restype = wintypes.HANDLE
+
+            tmp_dir = tempfile.gettempdir()
+            tmp_path = Path(tmp_dir) / f"temp_{caminho.name}"
+
+            h = CreateFileW(str(caminho), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, None, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
+            if h != -1 and h != 0xFFFFFFFFFFFFFFFF:
+                fd = msvcrt.open_osfhandle(h, os.O_RDONLY)
+                with open(fd, 'rb', closefd=True) as f_in:
+                    with open(tmp_path, 'wb') as f_out:
+                        f_out.write(f_in.read())
+                df = pd.read_excel(tmp_path, **kwargs)
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
+                return df
+        except Exception:
+            pass
+        raise
+
+
 def executar_etl_fato_visitas(
     data_inicial: str = '2024-01-01',
     data_final: Optional[str] = None,
@@ -133,17 +175,95 @@ def executar_etl_fato_visitas(
     df_visitas['mes_ano'] = df_visitas['data_visita'].dt.strftime('%Y-%m')
     df_visitas['mes_referencia'] = df_visitas['data_visita'].dt.to_period('M').dt.to_timestamp()
 
-    # Filtro de registros administrativos (não são visitas técnicas)
+    # Filtro estrito de visitas técnicas da cadeia de Leite (Whitelist aprovada sem CFT)
     if 'tipo_visita' in df_visitas.columns:
         linhas_antes = len(df_visitas)
-        padrao_descarte = 'CADASTRO|INATIVAÇÃO|INATIVACAO|TERMO|EXCLUSÃO|EXCLUSAO|EFICIENCIA ALIMENTAR|EFICIÊNCIA ALIMENTAR'
-        df_visitas = df_visitas[~df_visitas['tipo_visita'].astype(str).str.upper().str.contains(padrao_descarte, na=False)].copy()
-        print(f"   -> Descartados {linhas_antes - len(df_visitas)} registros administrativos/eficiência alimentar (restaram {len(df_visitas)} visitas técnicas).")
+        whitelist_leite = [
+            'ALVOAR ASSIST', 'ALVOAR ASSIST - V2',
+            'ALVOAR ECO', 'ALVOAR ECO - V2',
+            'RELATORIO DE VISITA ATEG/CCPR_GOIAS', 'RELATORIO DE VISITA ATEG/CCPR_GOIAS - V2',
+            'RELATÓRIO DE VISITA AUROKE',
+            'RELATORIO DE VISITA CAMPILEITE+',
+            'RELATÓRIO DE VISITA COPRIL', 'RELATÓRIO DE VISITA COPRIL - V2',
+            'RELATÓRIO DE VISITA FLORA',
+            'RELATÓRIO DE VISITA LABOR RURAL - LEITE',
+            'RELATÓRIO DE VISITA LABOR RURAL (PADRÃO)',
+            'RELATORIO DE VISITA LPA', 'RELATORIO DE VISITA LPA - V1', 'RELATORIO DE VISITA LPA - V2',
+            'RELATÓRIO DE VISITA NATA',
+            'RELATORIO DE VISITA REGENERA', 'RELATORIO DE VISITA REGENERA - V2',
+            'RELATÓRIO DE VISITA SEMEAR - V2', 'RELATÓRIO DE VISITA SEMEAR - V3'
+        ]
 
-    # 2. Extração de vínculos de produtores
-    print(f"\n🔍 ETAPA 2: Importando vínculos de {tabela_raw_vinculos}")
+        def _remover_acentos_tipo(txt: str) -> str:
+            import unicodedata
+            return "".join(c for c in unicodedata.normalize("NFKD", str(txt)) if not unicodedata.combining(c)).strip().upper()
+
+        whitelist_norm_set = {_remover_acentos_tipo(t) for t in whitelist_leite}
+        df_visitas['tipo_clean_temp'] = df_visitas['tipo_visita'].apply(_remover_acentos_tipo)
+        df_visitas = df_visitas[df_visitas['tipo_clean_temp'].isin(whitelist_norm_set)].copy()
+        df_visitas.drop(columns=['tipo_clean_temp'], inplace=True, errors='ignore')
+        print(f"   -> Filtradas {linhas_antes - len(df_visitas)} visitas (excluídos formulários CFT, administrativos e outras cadeias). Restaram {len(df_visitas)} visitas técnicas de Leite.")
+
+    # 2. Extração de vínculos e inativações de produtores
+    print(f"\n🔍 ETAPA 2: Importando vínculos ({tabela_raw_vinculos}) e inativações (sq_raw_inativacoes_produtor)")
     df_vinculos = buscar_todos_registros(supabase, tabela_raw_vinculos)
     print(f"   -> Total de vínculos importados: {len(df_vinculos)}")
+
+    df_inativacoes = buscar_todos_registros(supabase, 'sq_raw_inativacoes_produtor', select_cols='codigo_lr')
+    print(f"   -> Total de solicitações de inativação importadas: {len(df_inativacoes)}")
+
+    codigos_vinculos_ativos = set()
+    try:
+        dir_bd_sq = (raiz_projeto / 'DB' / 'INPUT' / 'BD_SMARTQUESTION') if raiz_projeto else (Path(__file__).resolve().parent.parent.parent / 'DB' / 'INPUT' / 'BD_SMARTQUESTION')
+        if not dir_bd_sq.exists():
+            dir_bd_sq = Path(r'c:\Users\Guilherme\LABOR RURAL\Analytics - Departamento Analytics\POWER_BI\PROJETOS\BI_LABOR_RURAL\BD_SMARTQUESTION')
+        arq_vinc_excel = dir_bd_sq / 'BD_BI_VINCULOS_COMPLETO.xlsx'
+        if arq_vinc_excel.exists():
+            df_vinc_excel = ler_excel_seguro(arq_vinc_excel)
+            if 'Ativo' in df_vinc_excel.columns and 'Código LR' in df_vinc_excel.columns:
+                m_at = df_vinc_excel['Ativo'].astype(str).str.strip().str.lower().isin(['true', 'sim', 'ativo', '1'])
+                codigos_vinculos_ativos = set(df_vinc_excel[m_at]['Código LR'].dropna().astype(str).str.strip().str.upper())
+                print(f"   -> Total de vínculos ativos na planilha oficial BD_BI_VINCULOS_COMPLETO.xlsx: {len(codigos_vinculos_ativos)}")
+    except Exception as e_vinc_ex:
+        print(f"   ℹ️ Aviso ao ler planilha oficial de vínculos: {e_vinc_ex}")
+
+    if not codigos_vinculos_ativos and not df_vinculos.empty and 'vinculo_ativo' in df_vinculos.columns:
+        m_ativos = df_vinculos['vinculo_ativo'].astype(str).str.strip().str.lower().isin(['true', 'sim', 'ativo', '1'])
+        codigos_vinculos_ativos = set(df_vinculos[m_ativos]['codigo_lr'].dropna().astype(str).str.strip().str.upper())
+
+    # Regra Ajustada: Produtores inativados sem vínculo ativo em BD_BI_VINCULOS_COMPLETO.xlsx têm inativação mantida.
+    # Suas visitas durante o período ATIVO (ex: LR02481 em junho/26 antes da inativação em agosto/26) são preservadas.
+    # Apenas visitas efetuadas APÓS a data da inativação (data_visita > data_inativacao) são descartadas.
+    dict_dt_inativacao = {}
+    if not df_inativacoes.empty and 'codigo_lr' in df_inativacoes.columns:
+        df_inat_temp = df_inativacoes.copy()
+        df_inat_temp['codigo_lr_clean'] = df_inat_temp['codigo_lr'].dropna().astype(str).str.strip().str.upper()
+        cols_dt = [c for c in ['data_inativacao', 'data_solicitacao'] if c in df_inat_temp.columns]
+        if cols_dt:
+            df_inat_temp['dt_inat'] = pd.to_datetime(df_inat_temp[cols_dt[0]], errors='coerce')
+            if len(cols_dt) > 1:
+                df_inat_temp['dt_inat'] = df_inat_temp['dt_inat'].fillna(pd.to_datetime(df_inat_temp[cols_dt[1]], errors='coerce'))
+            dict_dt_inativacao = df_inat_temp.groupby('codigo_lr_clean')['dt_inat'].max().to_dict()
+
+    codigos_inativados = set(dict_dt_inativacao.keys())
+    codigos_inativos_sem_vinculo = codigos_inativados - codigos_vinculos_ativos
+
+    if codigos_inativos_sem_vinculo:
+        linhas_antes_inat = len(df_visitas)
+        df_visitas['codigo_lr_clean_temp'] = df_visitas['codigo_lr'].astype(str).str.strip().str.upper()
+        
+        def deve_manter_visita(row):
+            cd = row['codigo_lr_clean_temp']
+            if cd in codigos_inativos_sem_vinculo:
+                dt_inat = dict_dt_inativacao.get(cd)
+                dt_vis = row['data_visita']
+                if pd.notna(dt_inat) and pd.notna(dt_vis) and dt_vis > dt_inat:
+                    return False
+            return True
+
+        df_visitas = df_visitas[df_visitas.apply(deve_manter_visita, axis=1)].copy()
+        df_visitas.drop(columns=['codigo_lr_clean_temp'], inplace=True, errors='ignore')
+        print(f"   -> Filtradas {linhas_antes_inat - len(df_visitas)} visitas efetuadas APÓS a inativação de produtores sem vínculo ativo.")
 
     df_vinculos_dedup = pd.DataFrame()
     if not df_vinculos.empty:

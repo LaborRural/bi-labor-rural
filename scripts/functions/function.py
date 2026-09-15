@@ -435,6 +435,9 @@ def carregar_env(raiz: Path | str | None = None) -> dict[str, str]:
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1)
                         env_vars[k.strip()] = v.strip()
+    if env_vars:
+        import os
+        os.environ.update(env_vars)
     return env_vars
 
 
