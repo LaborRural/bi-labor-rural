@@ -816,7 +816,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function setupTableSorting() {
     const MAPPINGS = {
       tbodySemVisita: ['consultor', 'codigo_lr', 'produtor', 'data_associacao', 'data_visita_mes_anterior', 'data_ultima_visita', 'dias_sem_visita', 'status'],
-      tbodyVisitados: ['consultor', 'codigo_lr', 'produtor', 'profissao', 'atendimento', 'data_visita', 'elabore_ok'],
+      tbodyVisitados: ['consultor', 'codigo_lr', 'produtor', 'atendimento', 'data_visita', 'elabore_ok'],
       tbodyTurnover: ['atendimento', 'produtor', 'tipo', 'data', 'grupo', 'motivo'],
       tbodyConsultants: ['consultor', 'total_fazendas', 'fazendas_visitadas', 'total_visitas', 'perc_cobertura', 'status'],
       tbodyDataProducers: ['codigo_lr', 'produtor', 'consultor', 'possui_dados', 'referencia', 'status'],
@@ -1129,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     visited = sortRows(visited, tableSort.tbodyVisitados, (row, key) => row[key]);
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
-    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 7, (row) => `<tr><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-left" title="${escapeHtml(row.profissao || '—')}">${escapeHtml(row.profissao || '—')}</td><td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td><td class="col-center">${escapeHtml(row.data_visita || '—')}</td><td class="col-center"><span class="badge ${row.elabore_ok === false ? 'badge-danger' : 'badge-positive'}">${row.elabore_ok === false ? 'NÃO' : 'SIM'}</span></td></tr>`);
+    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 6, (row) => `<tr><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td><td class="col-center">${escapeHtml(row.data_visita || '—')}</td><td class="col-center"><span class="badge ${row.elabore_ok === false ? 'badge-danger' : 'badge-positive'}">${row.elabore_ok === false ? 'NÃO' : 'SIM'}</span></td></tr>`);
     renderTablePagination('paginationVisitados', 'tableVisitados', visited.length);
 
     // Tabela 3: Turnover / Movimentação
@@ -1514,12 +1514,11 @@ document.addEventListener('DOMContentLoaded', () => {
       let data = (overview.tabelas?.visitados || []).filter((row) => matches(row, filter, true));
       data = applyColumnFilters(data, 'tableVisitados');
       return {
-        headers: ['Consultor(a)', 'ID (Código LR)', 'Produtor(a)', 'Profissão', 'Nº Atendimento', 'Data Visita', 'Mês Referência', 'Projeto', 'Agroindústria', 'Região', 'Elabore'],
+        headers: ['Consultor(a)', 'ID (Código LR)', 'Produtor(a)', 'Nº Atendimento', 'Data Visita', 'Mês Referência', 'Projeto', 'Agroindústria', 'Região', 'Elabore'],
         rows: data.map((r) => [
           r.consultor || '—',
           r.codigo_lr || '—',
           r.produtor || '—',
-          r.profissao || '—',
           r.atendimento || '—',
           r.data_visita || '—',
           r.mes_referencia || '—',
@@ -2193,10 +2192,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function getActiveReferenceMonthDisplay() {
+    const select = el('filterMonth');
+    if (select && select.value && select.selectedIndex >= 0) {
+      const opt = select.options[select.selectedIndex];
+      if (opt && opt.value) {
+        return opt.text;
+      }
+    }
+    const rawRef = state.overview?.refMonth || state.visits?.refMonth || '2026-08-01';
+    if (rawRef) {
+      const parsed = new Date(`${String(rawRef).slice(0, 10)}T12:00:00`);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^./, (c) => c.toUpperCase());
+      }
+      return String(rawRef).slice(0, 7);
+    }
+    return 'Agosto de 2026';
+  }
+
   function setupKpiInfoPopovers() {
     const popover = el('kpiInfoPopover');
     const popoverTitle = el('kpiPopoverTitle');
     const popoverBody = el('kpiPopoverBody');
+    const popoverRefBox = el('kpiPopoverRefBox');
+    const popoverRefVal = el('kpiPopoverRefVal');
     if (!popover || !popoverTitle || !popoverBody) return;
 
     let activeBtn = null;
@@ -2204,15 +2224,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function showPopover(btn) {
       const title = btn.dataset.infoTitle || 'Informação do Indicador';
       const body = btn.dataset.infoBody || '';
+      const refMonthDisplay = btn.dataset.infoRef || getActiveReferenceMonthDisplay();
+
       popoverTitle.textContent = title;
       popoverBody.textContent = body;
+
+      if (popoverRefBox && popoverRefVal) {
+        if (refMonthDisplay) {
+          popoverRefVal.textContent = refMonthDisplay;
+          popoverRefBox.style.display = 'flex';
+        } else {
+          popoverRefBox.style.display = 'none';
+        }
+      }
 
       const rect = btn.getBoundingClientRect();
       const scrollX = window.scrollX || window.pageXOffset;
       const scrollY = window.scrollY || window.pageYOffset;
 
       popover.style.display = 'block';
-      const popoverHeight = popover.offsetHeight || 100;
+      const popoverHeight = popover.offsetHeight || 110;
       const popoverWidth = popover.offsetWidth || 270;
 
       let top = rect.top + scrollY - popoverHeight - 8;
@@ -2239,21 +2270,35 @@ document.addEventListener('DOMContentLoaded', () => {
       activeBtn = null;
     }
 
-    document.querySelectorAll('.kpi-info-btn').forEach((btn) => {
-      btn.addEventListener('mouseenter', () => showPopover(btn));
-      btn.addEventListener('mouseleave', () => hidePopover());
-      btn.addEventListener('click', (e) => {
+    document.addEventListener('mouseover', (e) => {
+      const btn = e.target.closest('.kpi-info-btn');
+      if (btn && activeBtn !== btn) {
+        showPopover(btn);
+      }
+    });
+
+    document.addEventListener('mouseout', (e) => {
+      const btn = e.target.closest('.kpi-info-btn');
+      if (btn && activeBtn === btn) {
+        const related = e.relatedTarget;
+        if (!popover.contains(related) && (!related || !related.closest('.kpi-info-btn'))) {
+          hidePopover();
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.kpi-info-btn');
+      if (btn) {
         e.stopPropagation();
         if (activeBtn === btn) {
           hidePopover();
         } else {
           showPopover(btn);
         }
-      });
-    });
-
-    document.addEventListener('click', (e) => {
-      if (activeBtn && !popover.contains(e.target) && !e.target.closest('.kpi-info-btn')) {
+        return;
+      }
+      if (activeBtn && !popover.contains(e.target)) {
         hidePopover();
       }
     });

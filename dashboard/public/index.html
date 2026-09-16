@@ -113,7 +113,7 @@
           </article>
           <article class="panel-card table-card">
             <div class="panel-heading"><h2>Produtores visitados</h2><div class="panel-actions"><span class="record-count" id="countVisited">0 registros</span><button class="btn-table-export" id="btnExportVisitados" type="button" title="Exportar tabela para CSV (Excel)" aria-label="Exportar para CSV"><span class="material-symbols-rounded" aria-hidden="true">download</span><span>Exportar</span></button><button class="btn-panel-fs" type="button" title="Tela cheia" aria-label="Expandir painel para tela cheia"><span class="material-symbols-rounded">fullscreen</span></button></div></div>
-            <div class="table-scroll"><table class="data-table" id="tableVisitados"><thead><tr><th class="col-left">Consultor(a)</th><th class="col-center">ID</th><th class="col-left">Produtor(a)</th><th class="col-left">Profissão</th><th class="col-center">Nº Atend.</th><th class="col-center">Data Visita</th><th class="col-center">Elabore</th></tr><tr class="table-filter-row"><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="consultor" placeholder="Filtrar..." aria-label="Filtrar Consultor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="codigo_lr" placeholder="Filtrar..." aria-label="Filtrar ID"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="produtor" placeholder="Filtrar..." aria-label="Filtrar Produtor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="profissao" placeholder="Filtrar..." aria-label="Filtrar Profissão"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="atendimento" placeholder="Filtrar..." aria-label="Filtrar Atendimento"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="data_visita" placeholder="Filtrar..." aria-label="Filtrar Data"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="elabore" placeholder="Filtrar..." aria-label="Filtrar Elabore"></th></tr></thead><tbody id="tbodyVisitados"><tr><td colspan="7" class="empty-cell">Carregando...</td></tr></tbody></table></div>
+            <div class="table-scroll"><table class="data-table" id="tableVisitados"><thead><tr><th class="col-left">Consultor(a)</th><th class="col-center">ID</th><th class="col-left">Produtor(a)</th><th class="col-center">Nº Atend.</th><th class="col-center">Data Visita</th><th class="col-center">Elabore <button class="kpi-info-btn" type="button" aria-label="Informações sobre a coluna Elabore" data-info-title="Elabore (Disponibilidade)" data-info-body="Indica se o produtor visitado possui dados ou relatório econômico registrado no sistema Elabore no mês de referência (SIM = dados registrados no Elabore; NÃO = sem dados/relatório cadastrado no mês)."><span class="material-symbols-rounded" aria-hidden="true">info</span></button></th></tr><tr class="table-filter-row"><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="consultor" placeholder="Filtrar..." aria-label="Filtrar Consultor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="codigo_lr" placeholder="Filtrar..." aria-label="Filtrar ID"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="produtor" placeholder="Filtrar..." aria-label="Filtrar Produtor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="atendimento" placeholder="Filtrar..." aria-label="Filtrar Atendimento"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="data_visita" placeholder="Filtrar..." aria-label="Filtrar Data"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="elabore" placeholder="Filtrar..." aria-label="Filtrar Elabore"></th></tr></thead><tbody id="tbodyVisitados"><tr><td colspan="6" class="empty-cell">Carregando...</td></tr></tbody></table></div>
             <div class="table-pagination" id="paginationVisitados" data-table="tableVisitados"></div>
           </article>
         </div>
@@ -355,13 +355,17 @@
       <strong id="kpiPopoverTitle">Informação</strong>
     </div>
     <p id="kpiPopoverBody"></p>
+    <div class="kpi-info-ref-box" id="kpiPopoverRefBox" aria-label="Mês de referência">
+      <span class="material-symbols-rounded" aria-hidden="true">calendar_today</span>
+      <span>Mês de referência: <strong id="kpiPopoverRefVal">—</strong></span>
+    </div>
   </div>
 
   <!-- Backdrop para painel em tela cheia -->
   <div class="panel-fullscreen-backdrop" id="panelFsBackdrop" hidden></div>
 
-  <script src="./js/carousel.js?v=20260915-1"></script>
-  <script src="./js/charts.js?v=20260915-1"></script>
-  <script src="./js/main.js?v=20260915-1"></script>
+  <script src="./js/carousel.js?v=20260916-1"></script>
+  <script src="./js/charts.js?v=20260916-1"></script>
+  <script src="./js/main.js?v=20260916-1"></script>
 </body>
 </html>
