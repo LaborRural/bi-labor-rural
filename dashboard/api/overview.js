@@ -316,18 +316,26 @@ module.exports = async (req, res) => {
       if (isSaida && m.codigo_lr) inativacoesSet.add(String(m.codigo_lr).trim().toUpperCase());
     });
 
-    const fonteElabore = (elaboreMensalList && elaboreMensalList.length > 0) ? elaboreMensalList : (consistenciaList || []);
-
+    // Combinar AMBAS as fontes: sq_raw_consistencia_mensal tem prioridade sobre sq_fato_consistencia
+    // Indexar por mes_elabore E mes_referencia para cobrir dados antes e depois da migration
     const elaboreMensalMap = new Map();
-    fonteElabore.forEach(item => {
+
+    // 1. Primeiro indexar sq_fato_consistencia (base)
+    (consistenciaList || []).forEach(item => {
       const cod = String(item.codigo_lr).trim().toUpperCase();
-      if (item.mes_elabore) {
-        elaboreMensalMap.set(`${cod}_${String(item.mes_elabore).slice(0, 7)}`, item);
-      }
-      if (item.mes_referencia) {
-        elaboreMensalMap.set(`${cod}_${String(item.mes_referencia).slice(0, 7)}`, item);
-      }
+      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${String(item.mes_elabore).slice(0, 7)}`, item);
+      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${String(item.mes_referencia).slice(0, 7)}`, item);
     });
+
+    // 2. Sobrescrever com sq_raw_consistencia_mensal (mais granular, tem prioridade)
+    (elaboreMensalList || []).forEach(item => {
+      const cod = String(item.codigo_lr).trim().toUpperCase();
+      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${String(item.mes_elabore).slice(0, 7)}`, item);
+      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${String(item.mes_referencia).slice(0, 7)}`, item);
+    });
+
+    // fonteElabore para elaboreSet (union das duas)
+    const fonteElabore = [...(consistenciaList || []), ...(elaboreMensalList || [])];
 
     const elaboreSet = new Set(
       fonteElabore

@@ -815,12 +815,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setupTableSorting() {
     const MAPPINGS = {
-      tbodySemVisita: ['consultor', 'codigo_lr', 'produtor', 'data_associacao', 'data_visita_mes_anterior', 'data_ultima_visita', 'dias_sem_visita', 'status'],
-      tbodyVisitados: ['consultor', 'codigo_lr', 'produtor', 'atendimento', 'data_visita', 'elabore_ok'],
+      tbodySemVisita: ['codigo_lr', 'consultor', 'produtor', 'data_associacao', 'data_visita_mes_anterior', 'data_ultima_visita', 'dias_sem_visita', 'status'],
+      tbodyVisitados: ['codigo_lr', 'consultor', 'produtor', 'atendimento', 'data_visita', 'elabore_ok'],
       tbodyTurnover: ['atendimento', 'produtor', 'tipo', 'data', 'grupo', 'motivo'],
       tbodyConsultants: ['consultor', 'total_fazendas', 'fazendas_visitadas', 'total_visitas', 'perc_cobertura', 'status'],
       tbodyDataProducers: ['codigo_lr', 'produtor', 'consultor', 'possui_dados', 'referencia', 'status'],
-      tbodyInconsistencies: ['produtor', 'consultor', 'projeto', 'meses_sequenciais', 'consistencia_mensal', 'consistencia_anual', 'acao']
+      tbodyInconsistencies: ['codigo_lr', 'produtor', 'consultor', 'meses_sequenciais', 'consistencia_mensal', 'consistencia_anual', 'acao']
     };
 
     Object.entries(MAPPINGS).forEach(([tbodyId, colKeys]) => {
@@ -1118,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dtAssoc = row.data_associacao || row.data_vinculacao || row.data_referencia || '—';
       const dtVisitaMesAnterior = row.data_visita_mes_anterior || '—';
       const dtUltimaVisita = row.data_ultima_visita || '—';
-      return `<tr class="${rowClass}"><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(dtAssoc)}">${escapeHtml(dtAssoc)}</td><td class="col-center" title="${escapeHtml(dtVisitaMesAnterior)}">${escapeHtml(dtVisitaMesAnterior)}</td><td class="col-center" title="${escapeHtml(dtUltimaVisita)}">${escapeHtml(dtUltimaVisita)}</td><td class="col-center font-tabular">${hasDays ? days : '—'}</td><td class="col-center"><span class="badge ${badgeClass}" title="${escapeHtml(status)}">${escapeHtml(status)}</span></td></tr>`;
+      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(dtAssoc)}">${escapeHtml(dtAssoc)}</td><td class="col-center" title="${escapeHtml(dtVisitaMesAnterior)}">${escapeHtml(dtVisitaMesAnterior)}</td><td class="col-center" title="${escapeHtml(dtUltimaVisita)}">${escapeHtml(dtUltimaVisita)}</td><td class="col-center font-tabular">${hasDays ? days : '—'}</td><td class="col-center"><span class="badge ${badgeClass}" title="${escapeHtml(status)}">${escapeHtml(status)}</span></td></tr>`;
     });
     renderTablePagination('paginationSemVisita', 'tableSemVisita', withoutVisit.length);
 
@@ -1129,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     visited = sortRows(visited, tableSort.tbodyVisitados, (row, key) => row[key]);
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
-    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 6, (row) => `<tr><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td><td class="col-center">${escapeHtml(row.data_visita || '—')}</td><td class="col-center"><span class="badge ${row.elabore_ok === false ? 'badge-danger' : 'badge-positive'}">${row.elabore_ok === false ? 'NÃO' : 'SIM'}</span></td></tr>`);
+    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 6, (row) => `<tr><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td><td class="col-center">${escapeHtml(row.data_visita || '—')}</td><td class="col-center"><span class="badge ${row.elabore_ok === false ? 'badge-danger' : 'badge-positive'}">${row.elabore_ok === false ? 'NÃO' : 'SIM'}</span></td></tr>`);
     renderTablePagination('paginationVisitados', 'tableVisitados', visited.length);
 
     // Tabela 3: Turnover / Movimentação
@@ -1195,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const badgeClassAnual = getBadgeClass(row.consistencia_anual);
       const prodName = row.produtor || row.codigo_lr || '—';
 
-      return `<tr class="${rowClass}"><td class="col-left" title="${escapeHtml(prodName)}"><strong>${escapeHtml(prodName)}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.projeto || '—')}">${escapeHtml(row.projeto || '—')}</td><td class="col-center font-tabular">${number(row.meses_sequenciais)}</td><td class="col-center"><span class="badge ${badgeClassMensal}" title="${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}">${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}</span></td><td class="col-center"><span class="badge ${badgeClassAnual}" title="${escapeHtml(row.consistencia_anual || 'SEM DADOS')}">${escapeHtml(row.consistencia_anual || 'SEM DADOS')}</span></td><td class="col-center"><button class="link-button btn-view-details" type="button" onclick="window.openInconsistencyDetail('${escapeHtml(row.codigo_lr || row.produtor)}')">Ver detalhes ›</button></td></tr>`;
+      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(prodName)}"><strong>${escapeHtml(prodName)}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center font-tabular">${number(row.meses_sequenciais)}</td><td class="col-center"><span class="badge ${badgeClassMensal}" title="${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}">${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}</span></td><td class="col-center"><span class="badge ${badgeClassAnual}" title="${escapeHtml(row.consistencia_anual || 'SEM DADOS')}">${escapeHtml(row.consistencia_anual || 'SEM DADOS')}</span></td><td class="col-center"><button class="link-button btn-view-details" type="button" onclick="window.openInconsistencyDetail('${escapeHtml(row.codigo_lr || row.produtor)}')">Ver detalhes ›</button></td></tr>`;
     });
     renderTablePagination('paginationInconsistencies', 'tableInconsistencies', inconsistencies.length);
   }

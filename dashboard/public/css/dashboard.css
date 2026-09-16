@@ -1366,18 +1366,18 @@ body.table-resizing * {
 
 /* Larguras de Colunas Otimizadas por Tabela */
 /* Tabela 1: Produtores sem visita */
-#tableSemVisita th:nth-child(1) { width: 16%; }
-#tableSemVisita th:nth-child(2) { width: 7%; }
+#tableSemVisita th:nth-child(1) { width: 8%; }
+#tableSemVisita th:nth-child(2) { width: 16%; }
 #tableSemVisita th:nth-child(3) { width: 17%; }
 #tableSemVisita th:nth-child(4) { width: 11%; }
 #tableSemVisita th:nth-child(5) { width: 12%; }
 #tableSemVisita th:nth-child(6) { width: 11%; }
 #tableSemVisita th:nth-child(7) { width: 9%; }
-#tableSemVisita th:nth-child(8) { width: 17%; }
+#tableSemVisita th:nth-child(8) { width: 16%; }
 
 /* Tabela 2: Produtores visitados */
-#tableVisitados th:nth-child(1) { width: 22%; }
-#tableVisitados th:nth-child(2) { width: 12%; }
+#tableVisitados th:nth-child(1) { width: 12%; }
+#tableVisitados th:nth-child(2) { width: 22%; }
 #tableVisitados th:nth-child(3) { width: 30%; }
 #tableVisitados th:nth-child(4) { width: 13%; }
 #tableVisitados th:nth-child(5) { width: 12%; }
@@ -1411,9 +1411,9 @@ body.table-resizing * {
 #tableInconsistencies {
   min-width: 640px;
 }
-#tableInconsistencies th:nth-child(1) { width: 20%; }
-#tableInconsistencies th:nth-child(2) { width: 18%; }
-#tableInconsistencies th:nth-child(3) { width: 13%; }
+#tableInconsistencies th:nth-child(1) { width: 12%; }
+#tableInconsistencies th:nth-child(2) { width: 21%; }
+#tableInconsistencies th:nth-child(3) { width: 18%; }
 #tableInconsistencies th:nth-child(4) { width: 8%; }
 #tableInconsistencies th:nth-child(5) { width: 13%; }
 #tableInconsistencies th:nth-child(6) { width: 13%; }
