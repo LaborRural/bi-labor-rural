@@ -1,8 +1,8 @@
 {
-  "timestamp_inspecao": "2026-09-16T08:54:02.059559-03:00",
-  "timestamp_etl": "2026-09-16T08:54:02.059559-03:00",
-  "ultima_execucao_etl_formatada": "16/09/2026 às 08:54:02",
-  "ultima_leitura_planilhas_formatada": "16/09/2026 às 08:54:02",
+  "timestamp_inspecao": "2026-09-16T10:15:52.325491-03:00",
+  "timestamp_etl": "2026-09-16T10:15:52.325491-03:00",
+  "ultima_execucao_etl_formatada": "16/09/2026 às 10:15:52",
+  "ultima_leitura_planilhas_formatada": "16/09/2026 às 10:15:52",
   "arquivo_mais_recente_nome": "BD_STATUS_USUARIO_SQ.xlsx",
   "arquivo_mais_recente_data": "16/09/2026 às 08:17",
   "total_arquivos": 12,

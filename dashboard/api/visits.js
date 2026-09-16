@@ -190,26 +190,14 @@ module.exports = async (req, res) => {
     });
 
     const consultoresList = Object.values(consultoresMap).map(c => {
-      // 1. Fazendas da carteira do consultor que receberam visita
-      let visitedInPortfolio = 0;
-      if (c.farmCodes.size > 0) {
-        c.visitedFarms.forEach(cod => {
-          if (c.farmCodes.has(cod)) visitedInPortfolio++;
-        });
-      } else {
-        visitedInPortfolio = c.visitedFarms.size;
-      }
-
-      // 2. Base da carteira: se tem carteira cadastrada usa totalFarms, senão usa visitedFarms
-      const total = c.totalFarms > 0 ? c.totalFarms : (c.visitedFarms.size || 1);
-
-      // 3. Cobertura da carteira estritamente limitada a 100%
-      const cob = Math.min(100.0, (visitedInPortfolio / total) * 100).toFixed(1);
+      const visitedCount = c.visitedFarms.size;
+      const total = c.totalFarms > 0 ? c.totalFarms : (visitedCount || 1);
+      const cob = ((visitedCount / total) * 100).toFixed(1);
 
       return {
         consultor: c.consultor,
         total_fazendas: total,
-        fazendas_visitadas: visitedInPortfolio,
+        fazendas_visitadas: visitedCount,
         total_visitas: c.visitasCount,
         perc_cobertura: Number(cob),
         agroindustrias: [...c.industries],

@@ -889,8 +889,9 @@ def executar_reconciliacao(reindex_completo: bool = False):
                 continue
 
             # Priorizar grupo completo da LISTA_GERAL_RELATORIO_DE_GRUPO (contém todos os co-consultores)
+            grupo_val = str(r.get("grupo_atendimento") or "")
             grp_lg, grp_limp_lg = mapa_grupos_lista_geral.get(c.upper(), (None, None))
-            grupo_efetivo = grp_lg if grp_lg else (grupo_val if grupo_val else "")
+            grupo_efetivo = grp_lg if grp_lg else grupo_val
             nome_grupo_efetivo = grp_limp_lg if grp_limp_lg else extrair_nome_grupo_limpo(grupo_efetivo)
 
             # 0.1 Se o grupo contém CFT, NÃO sobe para a dimensão analítica
