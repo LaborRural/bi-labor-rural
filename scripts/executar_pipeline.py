@@ -101,7 +101,7 @@ def main():
 
     sucesso = executar_notebook(notebook_path)
     
-    # 3. Pós-ETL: Reconciliação de Movimentação e Ativos
+    # 3. Pós-ETL: Reconciliação de Movimentação, Ativos e Sanitização das Tabelas Fato
     if sucesso:
         try:
             try:
@@ -112,6 +112,13 @@ def main():
             executar_reconciliacao()
         except Exception as e_rec:
             print(f"⚠️ Aviso na reconciliação: {e_rec}")
+
+        try:
+            from sanitizar_tabelas_fato_supabase import executar_sanitizacao_completa
+            print("\n🧹 [PÓS-ETL] Sanitizando tabelas fato no Supabase...")
+            executar_sanitizacao_completa(modo_execucao="aplicar")
+        except Exception as e_san:
+            print(f"⚠️ Aviso na sanitização: {e_san}")
 
         print("\n🎉 Pipeline ETL finalizada com sucesso!")
         sys.exit(0)

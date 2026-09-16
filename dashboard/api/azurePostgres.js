@@ -339,6 +339,33 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
           return q.order('mes_referencia', { ascending: false }).order('codigo_produtor', { ascending: true });
         });
         if (rows && rows.length > 0) {
+          // Enriquecer com mapa de grupos completos da LISTA_GERAL (sq_raw_fazendas_grupo ou sq_raw_fazendas)
+          const gruposMap = new Map();
+          try {
+            for (const rawTbl of ['sq_raw_fazendas_grupo', 'sq_raw_fazendas']) {
+              const rawRows = await fetchAll(() => supabase
+                .from(rawTbl)
+                .select('codigo_produtor, grupo_ponto_atendimento, nome_grupo_ponto_atendimento')
+                .not('grupo_ponto_atendimento', 'is', null)
+              ).catch(() => []);
+              if (rawRows && rawRows.length > 0) {
+                rawRows.forEach(rg => {
+                  const c = String(rg.codigo_produtor || '').trim().toUpperCase();
+                  const grp = rg.nome_grupo_ponto_atendimento || rg.grupo_ponto_atendimento || '';
+                  if (c && grp) {
+                    const existing = gruposMap.get(c);
+                    if (!existing || (grp.includes('/') && !existing.includes('/')) || grp.length > existing.length) {
+                      gruposMap.set(c, grp);
+                    }
+                  }
+                });
+                break;
+              }
+            }
+          } catch (eGrupos) {
+            // fallback gracioso se raw não estiver disponível
+          }
+
           return rows
             .filter(r => {
               const cod = String(r.codigo_produtor || '').toUpperCase();
@@ -351,7 +378,13 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
               return true;
             })
             .map(r => {
-              const rawGrupo = r.nome_grupo_ponto_atendimento || r.grupo_ponto_atendimento || '';
+              const codUpper = String(r.codigo_produtor || '').trim().toUpperCase();
+              const grupoRawOriginal = r.nome_grupo_ponto_atendimento || r.grupo_ponto_atendimento || '';
+              const grupoCompleto = gruposMap.get(codUpper);
+              // Priorizar grupo com múltiplos consultores ('/') ou mais completo
+              const rawGrupo = (grupoCompleto && (grupoCompleto.includes('/') || grupoCompleto.length > grupoRawOriginal.length))
+                ? grupoCompleto
+                : grupoRawOriginal;
               const cleanProj = r.projeto || extractCleanProject(rawGrupo, r.tipo_ponto_atendimento);
               const consultores = sanitizeConsultorList(rawGrupo);
               const consultor = consultores.length > 0

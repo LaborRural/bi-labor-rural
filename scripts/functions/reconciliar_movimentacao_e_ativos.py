@@ -752,7 +752,16 @@ def executar_reconciliacao(reindex_completo: bool = False):
     df_ativas_todas = df_todos[df_todos["status"] == "Ativo"].copy()
     df_leite_todos = df_todos[df_todos["tipo_ponto_atendimento"].str.contains("LEITE", na=False)].copy()
 
-    print(f"   -> {len(df_todos)} fazendas consolidadas no espelho completo.")
+    # Mapeamento de grupos completos da LISTA_GERAL (para garantir co-consultores em sq_dim_fazendas_ativas)
+    mapa_grupos_lista_geral = {}
+    for item_g in lista_todos:
+        c_prod = str(item_g.get("codigo_produtor") or "").strip().upper()
+        grp_comp = item_g.get("grupo_ponto_atendimento")
+        grp_limp = item_g.get("nome_grupo_ponto_atendimento")
+        if c_prod and grp_comp:
+            mapa_grupos_lista_geral[c_prod] = (grp_comp, grp_limp)
+
+    print(f"   -> {len(df_todos)} fazendas consolidadas no espelho completo ({len(mapa_grupos_lista_geral)} mapeadas com grupo).")
     
     # ─── 6.1 Enviar Espelho Completo para sq_raw_fazendas_grupo ────────────
     print(f"\n📤 6.1 Gravando espelho completo da LISTA_GERAL em {tabela_raw}...")
@@ -879,15 +888,22 @@ def executar_reconciliacao(reindex_completo: bool = False):
             if ("_INATIVO" in c.upper()) or ("(INATIVO)" in nome_p.upper()) or ("_INATIVO" in nome_p.upper()):
                 continue
 
+            # Priorizar grupo completo da LISTA_GERAL_RELATORIO_DE_GRUPO (contém todos os co-consultores)
+            grp_lg, grp_limp_lg = mapa_grupos_lista_geral.get(c.upper(), (None, None))
+            grupo_efetivo = grp_lg if grp_lg else (grupo_val if grupo_val else "")
+            nome_grupo_efetivo = grp_limp_lg if grp_limp_lg else extrair_nome_grupo_limpo(grupo_efetivo)
+
             # 0.1 Se o grupo contém CFT, NÃO sobe para a dimensão analítica
-            grupo_val = str(r.get("grupo_atendimento") or "")
             proj_val = str(r.get("projeto") or "")
-            if "CFT" in grupo_val.upper() or "CFT" in proj_val.upper():
+            if "CFT" in grupo_efetivo.upper() or "CFT" in proj_val.upper():
                 continue
 
-            # 0.2 Status do Consultor: Se o consultor responsável estiver inativo
-            cons_resp = extrair_consultor_individual(r.get("consultor_grupo_atendimento"), r.get("grupo_atendimento"))
-            if cons_resp in consultores_inativos:
+            # 0.2 Status do Consultor: Se todos os consultores do grupo estiverem inativos
+            cons_resp = extrair_consultor_individual(r.get("consultor_grupo_atendimento"), grupo_efetivo)
+            consultores_do_grupo = [p.strip().upper() for p in re.sub(r"\(.*?\)", "", grupo_efetivo).split("/") if p.strip()]
+            if consultores_do_grupo and all(cg in consultores_inativos for cg in consultores_do_grupo):
+                continue
+            elif not consultores_do_grupo and cons_resp in consultores_inativos:
                 continue
 
             # 1. Se a data de associação for posterior ao mês avaliado, ainda não existia
@@ -923,7 +939,6 @@ def executar_reconciliacao(reindex_completo: bool = False):
             nome_prop = str(r.get("nome_propriedade") or "FAZENDA").strip()[:250]
             cid_val = str(r.get("cidade_produtor") or "").strip()[:100] or "NÃO INFORMADA"
             unid_val = str(r.get("unidade_atendimento") or "LABOR RURAL").strip()[:100]
-
             id_ativo = f"{c}_{ref_m.replace('-', '_')}"
             novos_ativos_m.append({
                 "id": id_ativo,
@@ -934,8 +949,8 @@ def executar_reconciliacao(reindex_completo: bool = False):
                 "cidade": cid_val,
                 "tipo_ponto_atendimento": cadeia_calc,
                 "unidade_atendimento": unid_val,
-                "grupo_ponto_atendimento": grupo_val[:250] if grupo_val else cons_resp,
-                "nome_grupo_ponto_atendimento": extrair_nome_grupo_limpo(grupo_val),
+                "grupo_ponto_atendimento": str(grupo_efetivo)[:250] if grupo_efetivo else cons_resp,
+                "nome_grupo_ponto_atendimento": str(nome_grupo_efetivo)[:250] if nome_grupo_efetivo else None,
                 "projeto": proj_final,
                 "agroindustria": agro_calc,
                 "regiao": reg_calc,

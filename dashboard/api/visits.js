@@ -146,9 +146,19 @@ module.exports = async (req, res) => {
         const c = sanitizedC || 'NÃO ATRIBUÍDO';
         if (isTestData(c, p.projeto)) return;
         if (!consultoresMap[c]) {
-          consultoresMap[c] = { consultor: c, totalFarms: 0, visitedFarms: new Set(), visitasCount: 0, industries: new Set(), projects: new Set(), regions: new Set() };
+          consultoresMap[c] = {
+            consultor: c,
+            totalFarms: 0,
+            farmCodes: new Set(),
+            visitedFarms: new Set(),
+            visitasCount: 0,
+            industries: new Set(),
+            projects: new Set(),
+            regions: new Set()
+          };
         }
         consultoresMap[c].totalFarms++;
+        if (p.codigo_lr) consultoresMap[c].farmCodes.add(String(p.codigo_lr).trim().toUpperCase());
         if (p.projeto) {
           consultoresMap[c].projects.add(p.projeto);
           consultoresMap[c].industries.add(mapAgroindustria(p.projeto));
@@ -163,21 +173,43 @@ module.exports = async (req, res) => {
       consultores.forEach(sanitizedC => {
         const c = sanitizedC || 'NÃO ATRIBUÍDO';
         if (!consultoresMap[c]) {
-          consultoresMap[c] = { consultor: c, totalFarms: 0, visitedFarms: new Set(), visitasCount: 0, industries: new Set(), regions: new Set() };
+          consultoresMap[c] = {
+            consultor: c,
+            totalFarms: 0,
+            farmCodes: new Set(),
+            visitedFarms: new Set(),
+            visitasCount: 0,
+            industries: new Set(),
+            projects: new Set(),
+            regions: new Set()
+          };
         }
         consultoresMap[c].visitasCount++;
-        if (v.codigo_lr) consultoresMap[c].visitedFarms.add(v.codigo_lr);
+        if (v.codigo_lr) consultoresMap[c].visitedFarms.add(String(v.codigo_lr).trim().toUpperCase());
       });
     });
 
     const consultoresList = Object.values(consultoresMap).map(c => {
-      const visitedCount = c.visitedFarms.size;
-      const total = c.totalFarms || visitedCount || 1;
-      const cob = ((visitedCount / total) * 100).toFixed(1);
+      // 1. Fazendas da carteira do consultor que receberam visita
+      let visitedInPortfolio = 0;
+      if (c.farmCodes.size > 0) {
+        c.visitedFarms.forEach(cod => {
+          if (c.farmCodes.has(cod)) visitedInPortfolio++;
+        });
+      } else {
+        visitedInPortfolio = c.visitedFarms.size;
+      }
+
+      // 2. Base da carteira: se tem carteira cadastrada usa totalFarms, senão usa visitedFarms
+      const total = c.totalFarms > 0 ? c.totalFarms : (c.visitedFarms.size || 1);
+
+      // 3. Cobertura da carteira estritamente limitada a 100%
+      const cob = Math.min(100.0, (visitedInPortfolio / total) * 100).toFixed(1);
+
       return {
         consultor: c.consultor,
         total_fazendas: total,
-        fazendas_visitadas: visitedCount,
+        fazendas_visitadas: visitedInPortfolio,
         total_visitas: c.visitasCount,
         perc_cobertura: Number(cob),
         agroindustrias: [...c.industries],
@@ -186,20 +218,28 @@ module.exports = async (req, res) => {
         status: 'ATIVO',
         mes_referencia: refMonth
       };
-    }).sort((a, b) => b.perc_cobertura - a.perc_cobertura);
+    }).sort((a, b) => b.perc_cobertura - a.perc_cobertura || b.total_visitas - a.total_visitas);
 
     const topConsultores = consultoresList;
     const totalConsultoresAtivos = consultoresList.length;
     const mediaVisitasConsultor = (totalVisitas / (totalConsultoresAtivos || 1)).toFixed(1);
 
-    const visitadosUnicos = new Set(visitasFiltradas.map(v => v.codigo_lr).filter(Boolean)).size;
+    // Contagem de produtores visitados que pertencem à carteira ativa (mesma lógica de overview.js)
+    const setCodigosAtivos = new Set(produtoresFiltrados.map(p => p.codigo_lr).filter(Boolean));
+    const codigosVisitadosNoPortfolio = new Set(
+      visitasFiltradas
+        .map(v => v.codigo_lr)
+        .filter(c => c && (setCodigosAtivos.size === 0 || setCodigosAtivos.has(c)))
+    );
+    const visitadosUnicos = codigosVisitadosNoPortfolio.size;
     const fazendasNaoVisitadas = Math.max(0, totalAtivos - visitadosUnicos);
+    const percCoberturaGeral = totalAtivos > 0 ? Math.min(100.0, (visitadosUnicos / totalAtivos) * 100).toFixed(1) : '0.0';
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),
       refMonth,
       kpis: {
-        perc_cobertura_geral: totalAtivos > 0 ? ((visitadosUnicos / totalAtivos) * 100).toFixed(1) : '0.0',
+        perc_cobertura_geral: percCoberturaGeral,
         total_visitas: totalVisitas,
         media_visitas_consultor: mediaVisitasConsultor,
         fazendas_nao_visitadas: fazendasNaoVisitadas
