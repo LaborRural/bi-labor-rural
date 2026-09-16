@@ -113,7 +113,7 @@
           </article>
           <article class="panel-card table-card">
             <div class="panel-heading"><h2>Produtores visitados</h2><div class="panel-actions"><span class="record-count" id="countVisited">0 registros</span><button class="btn-table-export" id="btnExportVisitados" type="button" title="Exportar tabela para CSV (Excel)" aria-label="Exportar para CSV"><span class="material-symbols-rounded" aria-hidden="true">download</span><span>Exportar</span></button><button class="btn-panel-fs" type="button" title="Tela cheia" aria-label="Expandir painel para tela cheia"><span class="material-symbols-rounded">fullscreen</span></button></div></div>
-            <div class="table-scroll"><table class="data-table" id="tableVisitados"><thead><tr><th class="col-center">ID</th><th class="col-left">Consultor(a)</th><th class="col-left">Produtor(a)</th><th class="col-center">Nº Atend.</th><th class="col-center">Data Visita</th><th class="col-center">Elabore <button class="kpi-info-btn" type="button" aria-label="Informações sobre a coluna Elabore" data-info-title="Elabore (Disponibilidade)" data-info-ref-type="mes_elabore" data-info-body="Indica se o produtor visitado possui dados ou relatório econômico registrado no sistema Elabore com base no mês de competência do Elabore. SIM = dados cadastrados no Elabore para o mês de competência; NÃO = sem dados ou relatório pendente de cadastro no Elabore."><span class="material-symbols-rounded" aria-hidden="true">info</span></button></th></tr><tr class="table-filter-row"><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="codigo_lr" placeholder="Filtrar..." aria-label="Filtrar ID"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="consultor" placeholder="Filtrar..." aria-label="Filtrar Consultor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="produtor" placeholder="Filtrar..." aria-label="Filtrar Produtor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="atendimento" placeholder="Filtrar..." aria-label="Filtrar Atendimento"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="data_visita" placeholder="Filtrar..." aria-label="Filtrar Data"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="elabore" placeholder="Filtrar..." aria-label="Filtrar Elabore"></th></tr></thead><tbody id="tbodyVisitados"><tr><td colspan="6" class="empty-cell">Carregando...</td></tr></tbody></table></div>
+            <div class="table-scroll"><table class="data-table" id="tableVisitados"><thead><tr><th class="col-center">ID</th><th class="col-left">Consultor(a)</th><th class="col-left">Produtor(a)</th><th class="col-center">Nº Atend.</th><th class="col-center">Data Visita</th><th class="col-center">Cadastro Elabore</th><th class="col-center">Dados Elabore <button class="kpi-info-btn" type="button" aria-label="Informações sobre a coluna Dados Elabore" data-info-title="Dados Elabore" data-info-body="Indica a presença e o percentual de preenchimento dos 8 blocos gerenciais do Elabore no mês de referência. Ex: SIM (67%) ou NÃO (0%)."><span class="material-symbols-rounded" aria-hidden="true">info</span></button></th><th class="col-center">Ação</th></tr><tr class="table-filter-row"><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="codigo_lr" placeholder="Filtrar..." aria-label="Filtrar ID"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="consultor" placeholder="Filtrar..." aria-label="Filtrar Consultor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="produtor" placeholder="Filtrar..." aria-label="Filtrar Produtor"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="atendimento" placeholder="Filtrar..." aria-label="Filtrar Atendimento"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="data_visita" placeholder="Filtrar..." aria-label="Filtrar Data"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="cadastro_elabore_label" placeholder="Filtrar..." aria-label="Filtrar Cadastro"></th><th><input type="text" class="table-col-filter" data-table="tableVisitados" data-col="dados_elabore_status" placeholder="Filtrar..." aria-label="Filtrar Dados"></th><th></th></tr></thead><tbody id="tbodyVisitados"><tr><td colspan="8" class="empty-cell">Carregando...</td></tr></tbody></table></div>
             <div class="table-pagination" id="paginationVisitados" data-table="tableVisitados"></div>
           </article>
         </div>
@@ -358,6 +358,55 @@
     <div class="kpi-info-ref-box" id="kpiPopoverRefBox" aria-label="Mês de referência">
       <span class="material-symbols-rounded" aria-hidden="true">calendar_today</span>
       <span><span id="kpiPopoverRefLabel">Mês de referência:</span> <strong id="kpiPopoverRefVal">—</strong></span>
+    </div>
+  </div>
+
+  <!-- Modal Interativo de Detalhamento dos Blocos do Elabore -->
+  <div class="modal-overlay" id="modalElaboreOverlay">
+    <div class="modal-card modal-card--large">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <span class="material-symbols-rounded modal-icon">analytics</span>
+          <h3 id="modalElaboreTitle">Detalhamento de Lançamentos - Elabore</h3>
+        </div>
+        <div class="modal-header-right">
+          <button class="btn-modal-close" id="btnCloseElaboreModal" type="button" title="Fechar modal" aria-label="Fechar modal">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding: 20px; overflow-x: auto;">
+        <div id="elaboreMetaBox" style="margin-bottom: 16px; font-size: 13px; color: var(--text-secondary);"></div>
+        <div class="table-scroll">
+          <table class="data-table data-table--modal" id="tableModalElabore">
+            <thead>
+              <tr>
+                <th class="col-left">Agroindústria</th>
+                <th class="col-left">Consultor(a)</th>
+                <th class="col-left">Produtor(a)</th>
+                <th class="col-left">Propriedade</th>
+                <th class="col-center">CódigoLR</th>
+                <th class="col-center">Ano-Mês</th>
+                <th class="col-center">Com dados</th>
+                <th class="col-center">Possui receita</th>
+                <th class="col-center">Possui qualidade</th>
+                <th class="col-center">Possui alimentação</th>
+                <th class="col-center">Possui área</th>
+                <th class="col-center">Possui rebanho</th>
+                <th class="col-center">Possui MDO</th>
+                <th class="col-center">Possui energia e combustível</th>
+                <th class="col-center">Possui outras despesas</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyModalElabore">
+              <!-- Renderizado via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 12px 24px; display: flex; justify-content: flex-end; border-top: 1px solid rgba(0,0,0,0.08);">
+        <button class="modal-btn-primary" id="btnOkElaboreModal" type="button" style="padding: 8px 20px; border-radius: 8px; background: var(--green-800); color: white; border: none; cursor: pointer; font-weight: 600;">Fechar</button>
+      </div>
     </div>
   </div>
 

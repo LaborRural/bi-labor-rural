@@ -241,7 +241,7 @@ module.exports = async (req, res) => {
     const visitasHistFiltradas = (visitasHistoricas || []).filter(rowMatches);
 
     // 6. Consultar movimentação, inativações e consistência com cache
-    const [movimentacoes, consistenciaList, elaboreMensalList, inativacoesList] = await Promise.all([
+    const [movimentacoes, consistenciaList, elaboreMensalList, inativacoesList, allElaboreProducers] = await Promise.all([
       fetchWithCache('FATO_MOVIMENTACAO', () =>
         fetchAll(() => supabase
           .from('sq_fato_movimentacao')
@@ -304,6 +304,11 @@ module.exports = async (req, res) => {
         fetchAll(() => supabase
           .from('sq_raw_inativacoes_produtor')
           .select('codigo_lr')).catch(() => [])
+      ),
+      fetchWithCache('ALL_ELABORE_PRODUCERS_OVERVIEW', () =>
+        fetchAll(() => supabase
+          .from('sq_raw_consistencia_mensal')
+          .select('codigo_lr')).catch(() => [])
       )
     ]);
 
@@ -342,6 +347,73 @@ module.exports = async (req, res) => {
         .filter(item => item.mes_elabore || (item.consistencia_mensal && !String(item.consistencia_mensal).toLowerCase().includes('sem dados')))
         .map(item => String(item.codigo_lr).trim().toUpperCase())
     );
+
+    const cadastradosElaboreSet = new Set();
+    (allElaboreProducers || []).forEach(item => {
+      if (item.codigo_lr) cadastradosElaboreSet.add(String(item.codigo_lr).trim().toUpperCase());
+    });
+    (fonteElabore || []).forEach(item => {
+      if (item.codigo_lr) cadastradosElaboreSet.add(String(item.codigo_lr).trim().toUpperCase());
+    });
+
+    function calcularBlocosElabore(elaboreObj) {
+      const defaultBlocos = {
+        receita: false,
+        qualidade: false,
+        alimentacao: false,
+        area: false,
+        rebanho: false,
+        mdo: false,
+        energia: false,
+        despesas: false
+      };
+
+      if (!elaboreObj) {
+        return { blocos: defaultBlocos, pct: 0, temDado: false, statusStr: 'NÃO (0%)' };
+      }
+
+      const status = String(elaboreObj.consistencia_mensal || '').toLowerCase();
+      if (!status || status.includes('sem dados') || status.includes('não calculado') || status.includes('pendente')) {
+        return { blocos: defaultBlocos, pct: 0, temDado: false, statusStr: 'NÃO (0%)' };
+      }
+
+      if (status.includes('consistente') && !status.includes('inconsistente')) {
+        const blocosFull = {
+          receita: true,
+          qualidade: true,
+          alimentacao: true,
+          area: true,
+          rebanho: true,
+          mdo: true,
+          energia: true,
+          despesas: true
+        };
+        return { blocos: blocosFull, pct: 100, temDado: true, statusStr: 'SIM (100%)' };
+      }
+
+      const detalhe = String(elaboreObj.detalhamento_inconsistencia || '').toLowerCase();
+      const blocosParsed = {
+        receita: !detalhe.includes('receita') && !detalhe.includes('leite vendido'),
+        qualidade: !detalhe.includes('qualidade') && !detalhe.includes('ccs') && !detalhe.includes('cbt'),
+        alimentacao: !detalhe.includes('alimentação') && !detalhe.includes('alimentacao') && !detalhe.includes('nutrição'),
+        area: !detalhe.includes('área') && !detalhe.includes('area') && !detalhe.includes('pastagem'),
+        rebanho: !detalhe.includes('rebanho') && !detalhe.includes('inventário') && !detalhe.includes('vacas'),
+        mdo: !detalhe.includes('mdo') && !detalhe.includes('mão de obra') && !detalhe.includes('mao de obra'),
+        energia: !detalhe.includes('energia') && !detalhe.includes('combustível') && !detalhe.includes('combustivel'),
+        despesas: !detalhe.includes('outras despesas') && !detalhe.includes('despesas operacionais')
+      };
+
+      const countTrue = Object.values(blocosParsed).filter(Boolean).length;
+      const validCount = countTrue > 0 ? countTrue : 5;
+      const pct = Math.round((validCount / 8) * 100);
+
+      return {
+        blocos: blocosParsed,
+        pct: pct,
+        temDado: true,
+        statusStr: `SIM (${pct}%)`
+      };
+    }
 
     const produtoresMap = new Map((produtoresFiltrados || []).map(p => [p.codigo_lr, p]));
     const produtoresConsistenciaMap = new Map((produtoresConsistenciaFiltrados || []).map(p => [p.codigo_lr, p]));
@@ -647,13 +719,15 @@ module.exports = async (req, res) => {
         const codLrNorm = String(v.codigo_lr || '').trim().toUpperCase();
         const monthKey = String(v.mes_referencia || refMonth || '').slice(0, 7);
         const elaboreObj = elaboreMensalMap.get(`${codLrNorm}_${monthKey}`);
-        const hasElabore = elaboreObj ? Boolean(elaboreObj.mes_elabore) : elaboreSet.has(codLrNorm);
+        const isCadastradoElabore = cadastradosElaboreSet.has(codLrNorm) || elaboreSet.has(codLrNorm);
+        const calcElab = calcularBlocosElabore(elaboreObj);
         const agro = mapAgroindustria(v.projeto || produtorAtivo?.projeto);
 
         return ({
           consultor: v.nome_consultor || 'CONSULTOR',
           codigo_lr: v.codigo_lr || '-',
           produtor: v.nome_produtor || 'PRODUTOR',
+          propriedade: v.nome_propriedade || produtorAtivo?.nome_propriedade || 'FAZENDA',
           agroindustria: agro,
           regiao: getRegiao(v.codigo_lr, produtorAtivo?.regiao || produtorAtivo?.unidade_atendimento, agro, v.projeto || produtorAtivo?.projeto),
           projeto: v.projeto || produtorAtivo?.projeto || 'NÃO INFORMADO',
@@ -662,7 +736,13 @@ module.exports = async (req, res) => {
           profissao: profissao,
           atendimento: numAtendimento,
           data_visita: formatDate(v.data_visita || v.mes_referencia),
-          elabore_ok: hasElabore,
+          elabore_ok: calcElab.temDado,
+          cadastro_elabore: isCadastradoElabore,
+          cadastro_elabore_label: isCadastradoElabore ? 'SIM' : 'NÃO',
+          dados_elabore_status: calcElab.statusStr,
+          dados_elabore_pct: calcElab.pct,
+          dados_elabore_tem_dado: calcElab.temDado,
+          detalhes_blocos: calcElab.blocos,
           tipo_visita: v.tipo_visita || 'RELATÓRIO DE VISITA LABOR RURAL - LEITE',
           valor_pago_produtor: Number(v.valor_pago_produtor || 0),
           valor_pago_agroindustria: Number(v.valor_pago_agroindustria || 0)

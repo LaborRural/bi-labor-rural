@@ -1129,7 +1129,32 @@ document.addEventListener('DOMContentLoaded', () => {
     visited = sortRows(visited, tableSort.tbodyVisitados, (row, key) => row[key]);
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
-    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 6, (row) => `<tr><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td><td class="col-center">${escapeHtml(row.data_visita || '—')}</td><td class="col-center"><span class="badge ${row.elabore_ok === false ? 'badge-danger' : 'badge-positive'}">${row.elabore_ok === false ? 'NÃO' : 'SIM'}</span></td></tr>`);
+    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 8, (row) => {
+      const isCad = row.cadastro_elabore !== false;
+      const cadBadge = isCad
+        ? '<span class="badge badge-positive">SIM</span>'
+        : '<span class="badge badge-neutral">NÃO</span>';
+      
+      const statusDados = row.dados_elabore_status || (row.elabore_ok ? 'SIM (100%)' : 'NÃO (0%)');
+      const hasData = row.dados_elabore_tem_dado || row.elabore_ok;
+      const pct = row.dados_elabore_pct ?? (hasData ? 100 : 0);
+      let dataBadgeClass = 'badge-danger';
+      if (pct >= 80) dataBadgeClass = 'badge-positive';
+      else if (pct > 0) dataBadgeClass = 'badge-warning';
+
+      const dataBadge = `<span class="badge ${dataBadgeClass}">${escapeHtml(statusDados)}</span>`;
+
+      return `<tr>
+        <td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td>
+        <td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td>
+        <td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td>
+        <td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td>
+        <td class="col-center">${escapeHtml(row.data_visita || '—')}</td>
+        <td class="col-center">${cadBadge}</td>
+        <td class="col-center">${dataBadge}</td>
+        <td class="col-center"><button class="btn-elabore-detail" type="button" data-lr="${escapeHtml(row.codigo_lr || '')}">Ver detalhes &rsaquo;</button></td>
+      </tr>`;
+    });
     renderTablePagination('paginationVisitados', 'tableVisitados', visited.length);
 
     // Tabela 3: Turnover / Movimentação
@@ -2688,6 +2713,79 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDetailsModal();
   setupKpiInfoPopovers();
   setupProvenanceModal();
+
+  function abrirModalDetalhesElabore(codigoLr) {
+    if (!state.overview || !state.overview.tabelas || !state.overview.tabelas.visitados) return;
+    const row = state.overview.tabelas.visitados.find(v => String(v.codigo_lr).trim().toUpperCase() === String(codigoLr).trim().toUpperCase());
+    if (!row) return;
+
+    const overlay = el('modalElaboreOverlay');
+    const tbody = el('tbodyModalElabore');
+    const metaBox = el('elaboreMetaBox');
+    if (!overlay || !tbody) return;
+
+    if (metaBox) {
+      metaBox.innerHTML = `<strong>Produtor:</strong> ${escapeHtml(row.produtor)} &nbsp;|&nbsp; <strong>Consultor:</strong> ${escapeHtml(row.consultor)} &nbsp;|&nbsp; <strong>Propriedade:</strong> ${escapeHtml(row.propriedade || 'FAZENDA')} &nbsp;|&nbsp; <strong>Ano-Mês:</strong> ${escapeHtml(row.mes_referencia ? row.mes_referencia.slice(0, 7) : '—')}`;
+    }
+
+    const b = row.detalhes_blocos || {
+      receita: row.elabore_ok,
+      qualidade: row.elabore_ok,
+      alimentacao: row.elabore_ok,
+      area: row.elabore_ok,
+      rebanho: row.elabore_ok,
+      mdo: row.elabore_ok,
+      energia: row.elabore_ok,
+      despesas: row.elabore_ok
+    };
+
+    const iconOk = '<span style="color:#10b981; font-size:16px; font-weight:bold;">🟢</span>';
+    const iconNao = '<span style="color:#ef4444; font-size:16px; font-weight:bold;">🔴</span>';
+
+    const anoMes = row.mes_referencia ? row.mes_referencia.slice(0, 7) : '—';
+    const temDado = row.dados_elabore_tem_dado || row.elabore_ok;
+
+    tbody.innerHTML = `<tr>
+      <td class="col-left">${escapeHtml(row.agroindustria || '—')}</td>
+      <td class="col-left">${escapeHtml(row.consultor || '—')}</td>
+      <td class="col-left">${escapeHtml(row.produtor || '—')}</td>
+      <td class="col-left">${escapeHtml(row.propriedade || 'FAZENDA')}</td>
+      <td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td>
+      <td class="col-center">${escapeHtml(anoMes)}</td>
+      <td class="col-center">${temDado ? iconOk : iconNao}</td>
+      <td class="col-center">${b.receita ? iconOk : iconNao}</td>
+      <td class="col-center">${b.qualidade ? iconOk : iconNao}</td>
+      <td class="col-center">${b.alimentacao ? iconOk : iconNao}</td>
+      <td class="col-center">${b.area ? iconOk : iconNao}</td>
+      <td class="col-center">${b.rebanho ? iconOk : iconNao}</td>
+      <td class="col-center">${b.mdo ? iconOk : iconNao}</td>
+      <td class="col-center">${b.energia ? iconOk : iconNao}</td>
+      <td class="col-center">${b.despesas ? iconOk : iconNao}</td>
+    </tr>`;
+
+    overlay.classList.add('active');
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-elabore-detail');
+    if (btn) {
+      e.preventDefault();
+      const lr = btn.dataset.lr;
+      if (lr) abrirModalDetalhesElabore(lr);
+    }
+  });
+
+  el('btnCloseElaboreModal')?.addEventListener('click', () => {
+    el('modalElaboreOverlay')?.classList.remove('active');
+  });
+  el('btnOkElaboreModal')?.addEventListener('click', () => {
+    el('modalElaboreOverlay')?.classList.remove('active');
+  });
+  el('modalElaboreOverlay')?.addEventListener('click', (e) => {
+    if (e.target === el('modalElaboreOverlay')) {
+      el('modalElaboreOverlay').classList.remove('active');
+    }
+  });
   setupExportButtons();
   setupChartHorizonControls();
   setupPanelFullscreen();
