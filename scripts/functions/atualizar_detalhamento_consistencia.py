@@ -191,7 +191,7 @@ def atualizar_consistencia_mensal(
     df_carga = pd.DataFrame()
     df_carga["codigo_lr"] = df_excel[col_codigo].astype(str).str.strip()
     df_carga["mes_referencia"] = pd.to_datetime(df_excel[col_mes]).dt.strftime("%Y-%m-%d")
-    df_carga["mes_elabore"] = df_carga["mes_referencia"]
+    df_carga["mes_elabore"] = (pd.to_datetime(df_carga["mes_referencia"]) - pd.DateOffset(months=1)).dt.to_period("M").dt.to_timestamp().dt.strftime("%Y-%m-%d")
 
     if col_produtor:
         df_carga["nome_produtor"] = df_excel[col_produtor].apply(lambda x: str(x).strip() if pd.notna(x) else None)

@@ -63,7 +63,7 @@ module.exports = async (req, res) => {
     const requestedMonth = String(req.query?.month || '').slice(0, 10);
     const isAllMonths = !/^\d{4}-\d{2}-\d{2}$/.test(requestedMonth);
     const baseMonth = isAllMonths ? null : requestedMonth;
-    const refMonth = baseMonth ? (shiftMonthMinus1(baseMonth) || baseMonth) : null;
+    const refMonth = baseMonth;
 
     const filters = {
       industry: String(req.query?.industry || '').trim(),
@@ -115,8 +115,8 @@ module.exports = async (req, res) => {
         fetchAll(() => {
           let q = supabase
             .from('sq_raw_consistencia_mensal')
-            .select('codigo_lr, mes_referencia, consistencia_mensal, detalhamento_inconsistencia');
-          if (refMonth) q = q.eq('mes_referencia', refMonth);
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_mensal, detalhamento_inconsistencia');
+          if (refMonth) q = q.or(`mes_elabore.eq.${refMonth},mes_referencia.eq.${refMonth}`);
           return q.order('mes_referencia', { ascending: false });
         }).catch(() => [])
       ),
@@ -124,8 +124,8 @@ module.exports = async (req, res) => {
         fetchAll(() => {
           let q = supabase
             .from('sq_raw_consistencia_anual')
-            .select('codigo_lr, mes_referencia, consistencia_anual, detalhamento_inconsistencia');
-          if (refMonth) q = q.eq('mes_referencia', refMonth);
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_anual, detalhamento_inconsistencia');
+          if (refMonth) q = q.or(`mes_elabore.eq.${refMonth},mes_referencia.eq.${refMonth}`);
           return q.order('mes_referencia', { ascending: false });
         }).catch(() => [])
       )
@@ -133,11 +133,11 @@ module.exports = async (req, res) => {
 
     const fallbackMetaMap = new Map((vinculosFallback || []).map(v => [v.codigo_lr, v]));
     const mensalRefMap = new Map((consistenciaMensalBruta || []).map(m => [
-      `${String(m.codigo_lr).trim().toUpperCase()}_${String(m.mes_referencia || '').slice(0, 7)}`,
+      `${String(m.codigo_lr).trim().toUpperCase()}_${String(m.mes_elabore || m.mes_referencia || '').slice(0, 7)}`,
       m
     ]));
     const anualRefMap = new Map((consistenciaAnualBruta || []).map(a => [
-      `${String(a.codigo_lr).trim().toUpperCase()}_${String(a.mes_referencia || '').slice(0, 7)}`,
+      `${String(a.codigo_lr).trim().toUpperCase()}_${String(a.mes_elabore || a.mes_referencia || '').slice(0, 7)}`,
       a
     ]));
     const produtoresAtivos = (produtoresAtivosBrutos || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto)).filter(rowMatches);
@@ -150,7 +150,7 @@ module.exports = async (req, res) => {
     });
 
     const consistenciaFiltrada = refMonth
-      ? (consistenciaHistorica || []).filter(c => c.mes_referencia === refMonth)
+      ? (consistenciaHistorica || []).filter(c => (c.mes_elabore || c.mes_referencia) === refMonth)
       : (consistenciaHistorica || []);
     const total = consistenciaFiltrada.length;
 

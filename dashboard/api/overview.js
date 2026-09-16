@@ -113,14 +113,12 @@ module.exports = async (req, res) => {
     const isAllMonths = !/^\d{4}-\d{2}-\d{2}$/.test(requestedMonth);
 
     const visitasMonth = isAllMonths ? null : requestedMonth;
-    const consistencyMonth = isAllMonths ? null : (shiftMonthMinus1(requestedMonth) || requestedMonth);
+    const consistencyMonth = visitasMonth;
     const refMonth = visitasMonth;
 
     // 3. Consultar produtores ativos
-    const [produtoresListRaw, produtoresConsistenciaRaw] = await Promise.all([
-      getProdutoresAtivos(supabase, fetchAll, visitasMonth, maxAllowedMonth),
-      getProdutoresAtivos(supabase, fetchAll, consistencyMonth, maxAllowedMonth)
-    ]);
+    const produtoresListRaw = await getProdutoresAtivos(supabase, fetchAll, visitasMonth, maxAllowedMonth);
+    const produtoresConsistenciaRaw = produtoresListRaw;
     const produtoresList = (produtoresListRaw || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto, p.codigo_lr, p.tipo_ponto_atendimento));
     const produtoresConsistencia = (produtoresConsistenciaRaw || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto, p.codigo_lr, p.tipo_ponto_atendimento));
 
@@ -250,21 +248,21 @@ module.exports = async (req, res) => {
           .select('codigo_lr, nome_consultor, data_movimentacao, movimentacao, motivo_inativacao, outro_motivo')
           .order('data_movimentacao', { ascending: false })).catch(() => [])
       ),
-      fetchWithCache(`FATO_CONSISTENCIA_${consistencyMonth || 'ALL'}`, () =>
+      fetchWithCache(`FATO_CONSISTENCIA_${visitasMonth || 'ALL'}`, () =>
         fetchAll(() => {
           let q = supabase
             .from('sq_fato_consistencia')
             .select('codigo_lr, consistencia_mensal, consistencia_anual, mes_elabore, mes_referencia');
-          if (consistencyMonth) q = q.eq('mes_referencia', consistencyMonth);
+          if (visitasMonth) q = q.or(`mes_elabore.eq.${visitasMonth},mes_referencia.eq.${visitasMonth}`);
           return q.order('mes_referencia', { ascending: false }).order('codigo_lr', { ascending: true });
         }).catch(() => [])
       ),
-      fetchWithCache(`RAW_CONSISTENCIA_MENSAL_${consistencyMonth || 'ALL'}`, () =>
+      fetchWithCache(`RAW_CONSISTENCIA_MENSAL_${visitasMonth || 'ALL'}`, () =>
         fetchAll(() => {
           let q = supabase
             .from('sq_raw_consistencia_mensal')
             .select('codigo_lr, mes_elabore, consistencia_mensal, mes_referencia');
-          if (consistencyMonth) q = q.eq('mes_referencia', consistencyMonth);
+          if (visitasMonth) q = q.or(`mes_elabore.eq.${visitasMonth},mes_referencia.eq.${visitasMonth}`);
           return q.order('mes_referencia', { ascending: false });
         }).catch(() => [])
       ),
@@ -288,7 +286,7 @@ module.exports = async (req, res) => {
 
     const elaboreMensalMap = new Map(
       fonteElabore.map(item => [
-        `${String(item.codigo_lr).trim().toUpperCase()}_${String(item.mes_referencia || '').slice(0, 7)}`,
+        `${String(item.codigo_lr).trim().toUpperCase()}_${String(item.mes_elabore || item.mes_referencia || '').slice(0, 7)}`,
         item
       ])
     );
