@@ -1165,18 +1165,20 @@ button { color: inherit; }
   top: 0;
   z-index: 2;
   position: relative;
-  padding: 4px 6px;
+  padding: 4px 5px;
   color: #334155;
   background: #f4f5f7;
   border-bottom: 1px solid #e2e8f0;
   font-size: 10.5px;
   font-weight: 650;
   letter-spacing: 0.01em;
-  text-align: left;
+  text-align: center;
   text-transform: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-height: 1.15;
+  vertical-align: middle;
   cursor: pointer;
   user-select: none;
   transition: background 150ms ease, color 150ms ease;
@@ -1384,41 +1386,47 @@ body.table-resizing * {
 #tableSemVisita th:nth-child(8) { width: 16%; }
 
 /* Tabela 2: Produtores visitados */
-#tableVisitados th:nth-child(1) { width: 9%; }
-#tableVisitados th:nth-child(2) { width: 20%; }
-#tableVisitados th:nth-child(3) { width: 23%; }
-#tableVisitados th:nth-child(4) { width: 10%; }
+#tableVisitados th:nth-child(1) { width: 8%; }
+#tableVisitados th:nth-child(2) { width: 18%; }
+#tableVisitados th:nth-child(3) { width: 24%; }
+#tableVisitados th:nth-child(4) { width: 8%; }
 #tableVisitados th:nth-child(5) { width: 10%; }
-#tableVisitados th:nth-child(6) { width: 9%; }
+#tableVisitados th:nth-child(6) { width: 10%; }
 #tableVisitados th:nth-child(7) { width: 10%; }
-#tableVisitados th:nth-child(8) { width: 9%; }
+#tableVisitados th:nth-child(8) { width: 12%; }
 
-.btn-elabore-detail {
-  background: transparent;
-  color: var(--green-800);
-  border: 1px solid var(--green-800);
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 150ms ease;
-  white-space: nowrap;
+.btn-elabore-detail,
+.link-button {
+  background: transparent !important;
+  color: #0F6E56 !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  transition: color 140ms ease, opacity 140ms ease !important;
 }
 
-.btn-elabore-detail:hover {
-  background: var(--green-800);
-  color: #ffffff;
+.btn-elabore-detail:hover,
+.link-button:hover {
+  color: var(--green-800, #005854) !important;
+  text-decoration: underline !important;
 }
 
-:root[data-theme="dark"] .btn-elabore-detail {
-  color: #8be4d2;
-  border-color: #1c4a43;
+:root[data-theme="dark"] .btn-elabore-detail,
+:root[data-theme="dark"] .link-button {
+  color: #7ce0cc !important;
 }
 
-:root[data-theme="dark"] .btn-elabore-detail:hover {
-  background: #1c4a43;
-  color: #ffffff;
+:root[data-theme="dark"] .btn-elabore-detail:hover,
+:root[data-theme="dark"] .link-button:hover {
+  color: #a3f0e0 !important;
+  text-decoration: underline !important;
 }
 
 .badge-neutral {
@@ -1431,6 +1439,32 @@ body.table-resizing * {
   background: #1e293b;
   color: #94a3b8;
   border-color: #334155;
+}
+
+.badge-transparent {
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  border: 1px dashed rgba(100, 116, 139, 0.35);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+:root[data-theme="dark"] .badge-transparent {
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.badge-transparent-danger {
+  background: rgba(239, 68, 68, 0.05);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  font-weight: 500;
+}
+
+:root[data-theme="dark"] .badge-transparent-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
 }
 
 /* Tabela 3: Movimentação dos produtores */

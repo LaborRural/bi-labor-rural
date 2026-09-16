@@ -1130,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
     if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 8, (row) => {
-      const isCad = row.cadastro_elabore !== false;
+      const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore);
       const cadBadge = isCad
         ? '<span class="badge badge-positive">SIM</span>'
         : '<span class="badge badge-neutral">NÃO</span>';
@@ -1138,9 +1138,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const statusDados = row.dados_elabore_status || (row.elabore_ok ? 'SIM (100%)' : 'NÃO (0%)');
       const hasData = row.dados_elabore_tem_dado || row.elabore_ok;
       const pct = row.dados_elabore_pct ?? (hasData ? 100 : 0);
-      let dataBadgeClass = 'badge-danger';
-      if (pct >= 80) dataBadgeClass = 'badge-positive';
-      else if (pct > 0) dataBadgeClass = 'badge-warning';
+
+      let dataBadgeClass = 'badge-neutral';
+      if (pct >= 80) {
+        dataBadgeClass = 'badge-positive';
+      } else if (pct > 0) {
+        dataBadgeClass = 'badge-warning';
+      } else {
+        dataBadgeClass = isCad ? 'badge-danger' : 'badge-neutral';
+      }
 
       const dataBadge = `<span class="badge ${dataBadgeClass}">${escapeHtml(statusDados)}</span>`;
 
@@ -1152,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="col-center">${escapeHtml(row.data_visita || '—')}</td>
         <td class="col-center">${cadBadge}</td>
         <td class="col-center">${dataBadge}</td>
-        <td class="col-center"><button class="btn-elabore-detail" type="button" data-lr="${escapeHtml(row.codigo_lr || '')}">Ver detalhes &rsaquo;</button></td>
+        <td class="col-center"><button class="btn-elabore-detail" type="button" data-lr="${escapeHtml(row.codigo_lr || '')}">Ver detalhes ›</button></td>
       </tr>`;
     });
     renderTablePagination('paginationVisitados', 'tableVisitados', visited.length);
@@ -2720,13 +2726,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!row) return;
 
     const overlay = el('modalElaboreOverlay');
-    const tbody = el('tbodyModalElabore');
-    const metaBox = el('elaboreMetaBox');
-    if (!overlay || !tbody) return;
+    const modalBody = el('modalElaboreBody');
+    const refMonthEl = el('modalElaboreRefMonthText');
+    if (!overlay || !modalBody) return;
 
-    if (metaBox) {
-      metaBox.innerHTML = `<strong>Produtor:</strong> ${escapeHtml(row.produtor)} &nbsp;|&nbsp; <strong>Consultor:</strong> ${escapeHtml(row.consultor)} &nbsp;|&nbsp; <strong>Propriedade:</strong> ${escapeHtml(row.propriedade || 'FAZENDA')} &nbsp;|&nbsp; <strong>Ano-Mês:</strong> ${escapeHtml(row.mes_referencia ? row.mes_referencia.slice(0, 7) : '—')}`;
-    }
+    const anoMes = row.mes_referencia ? String(row.mes_referencia).slice(0, 7) : '—';
+    const refMonthText = row.mes_referencia ? String(row.mes_referencia).slice(0, 7).split('-').reverse().join('/') : '--/----';
+    if (refMonthEl) refMonthEl.textContent = refMonthText;
 
     const b = row.detalhes_blocos || {
       receita: row.elabore_ok,
@@ -2739,31 +2745,93 @@ document.addEventListener('DOMContentLoaded', () => {
       despesas: row.elabore_ok
     };
 
-    const iconOk = '<span style="color:#10b981; font-size:16px; font-weight:bold;">🟢</span>';
-    const iconNao = '<span style="color:#ef4444; font-size:16px; font-weight:bold;">🔴</span>';
-
-    const anoMes = row.mes_referencia ? row.mes_referencia.slice(0, 7) : '—';
     const temDado = row.dados_elabore_tem_dado || row.elabore_ok;
+    const statusBadge = String(row.status || 'ATIVO').toUpperCase() === 'INATIVO' ? 'badge-danger' : 'badge-positive';
 
-    tbody.innerHTML = `<tr>
-      <td class="col-left">${escapeHtml(row.agroindustria || '—')}</td>
-      <td class="col-left">${escapeHtml(row.consultor || '—')}</td>
-      <td class="col-left">${escapeHtml(row.produtor || '—')}</td>
-      <td class="col-left">${escapeHtml(row.propriedade || 'FAZENDA')}</td>
-      <td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td>
-      <td class="col-center">${escapeHtml(anoMes)}</td>
-      <td class="col-center">${temDado ? iconOk : iconNao}</td>
-      <td class="col-center">${b.receita ? iconOk : iconNao}</td>
-      <td class="col-center">${b.qualidade ? iconOk : iconNao}</td>
-      <td class="col-center">${b.alimentacao ? iconOk : iconNao}</td>
-      <td class="col-center">${b.area ? iconOk : iconNao}</td>
-      <td class="col-center">${b.rebanho ? iconOk : iconNao}</td>
-      <td class="col-center">${b.mdo ? iconOk : iconNao}</td>
-      <td class="col-center">${b.energia ? iconOk : iconNao}</td>
-      <td class="col-center">${b.despesas ? iconOk : iconNao}</td>
-    </tr>`;
+    const blocosConfig = [
+      { nome: 'Disponibilidade de Dados (Geral)', ok: temDado, desc: 'Relatório e lançamentos analíticos disponíveis no Elabore' },
+      { nome: 'Possui Receita', ok: b.receita, desc: 'Presença de lançamentos de faturamento bruto e produção de leite' },
+      { nome: 'Possui Qualidade', ok: b.qualidade, desc: 'Parâmetros físico-químicos e microbiológicos (CCS, CBT, Gordura, Proteína)' },
+      { nome: 'Possui Alimentação', ok: b.alimentacao, desc: 'Lançamentos de despesas com volumoso, ração e concentrados' },
+      { nome: 'Possui Área', ok: b.area, desc: 'Informações de hectares e área destinada à atividade leiteira' },
+      { nome: 'Possui Rebanho', ok: b.rebanho, desc: 'Inventário de vacas em lactação, vacas secas e novilhas' },
+      { nome: 'Possui Mão de Obra (MDO)', ok: b.mdo, desc: 'Despesas e contingente de trabalhadores familiares e contratados' },
+      { nome: 'Possui Energia e Combustível', ok: b.energia, desc: 'Lançamentos de energia elétrica, diesel e combustíveis operacionais' },
+      { nome: 'Possui Outras Despesas', ok: b.despesas, desc: 'Despesas operacionais diversas, medicamentos, fretes e manutenção' }
+    ];
+
+    const blocosRowsHtml = blocosConfig.map(c => `
+      <tr>
+        <td class="col-left"><strong>${escapeHtml(c.nome)}</strong></td>
+        <td class="col-center">
+          <span class="badge ${c.ok ? 'badge-positive' : 'badge-danger'}">
+            ${c.ok ? 'SIM' : 'NÃO'}
+          </span>
+        </td>
+        <td class="col-left" style="color:var(--muted); font-size:11px;">${escapeHtml(c.desc)}</td>
+      </tr>
+    `).join('');
+
+    modalBody.innerHTML = `
+      <fieldset class="modal-fieldset">
+        <legend class="modal-legend">Informações do Produtor e Vínculo</legend>
+        <div class="detail-grid">
+          <div class="detail-field">
+            <label class="field-label">Código LR</label>
+            <div class="field-box">${escapeHtml(row.codigo_lr || '—')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Produtor(a)</label>
+            <div class="field-box field-box--bold">${escapeHtml(row.produtor || '—')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Consultor(a) Técnico(a)</label>
+            <div class="field-box">${escapeHtml(row.consultor || '—')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Agroindústria</label>
+            <div class="field-box">${escapeHtml(row.agroindustria || row.projeto || '—')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Propriedade / Região</label>
+            <div class="field-box">${escapeHtml(row.propriedade || row.regiao || 'FAZENDA')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Projeto / Programa</label>
+            <div class="field-box">${escapeHtml(row.projeto || '—')}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Ano-Mês Referência</label>
+            <div class="field-box">${escapeHtml(anoMes)}</div>
+          </div>
+          <div class="detail-field">
+            <label class="field-label">Status Cadastral</label>
+            <div class="field-box"><span class="badge ${statusBadge}">${escapeHtml(row.status || 'ATIVO')}</span></div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="modal-fieldset">
+        <legend class="modal-legend">Detalhamento dos Lançamentos por Bloco (Elabore)</legend>
+        <div class="table-scroll" style="max-height: 280px;">
+          <table class="data-table data-table--modal">
+            <thead>
+              <tr>
+                <th class="col-left" style="width: 35%;">Bloco / Módulo Analítico</th>
+                <th class="col-center" style="width: 15%;">Status</th>
+                <th class="col-left" style="width: 50%;">Descrição do Lançamento</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${blocosRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </fieldset>
+    `;
 
     overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
   }
 
   document.addEventListener('click', (e) => {
@@ -2775,15 +2843,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  el('btnCloseElaboreModal')?.addEventListener('click', () => {
-    el('modalElaboreOverlay')?.classList.remove('active');
-  });
-  el('btnOkElaboreModal')?.addEventListener('click', () => {
-    el('modalElaboreOverlay')?.classList.remove('active');
-  });
+  function fecharModalElabore() {
+    const overlay = el('modalElaboreOverlay');
+    if (overlay) {
+      overlay.classList.remove('active');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  el('btnCloseElaboreModal')?.addEventListener('click', fecharModalElabore);
+  el('btnOkElaboreModal')?.addEventListener('click', fecharModalElabore);
   el('modalElaboreOverlay')?.addEventListener('click', (e) => {
     if (e.target === el('modalElaboreOverlay')) {
-      el('modalElaboreOverlay').classList.remove('active');
+      fecharModalElabore();
     }
   });
   setupExportButtons();

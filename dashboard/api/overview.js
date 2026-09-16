@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const supabase = getSupabaseClient();
-    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
+    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos, getElaboreCadastradosSet } = require('./azurePostgres');
 
     // 1. Metadados e Tabelas Dimensão com Cache
     const [agrosDB, consultoresDB, regiaoMap, dimRegioesData] = await Promise.all([
@@ -305,11 +305,7 @@ module.exports = async (req, res) => {
           .from('sq_raw_inativacoes_produtor')
           .select('codigo_lr')).catch(() => [])
       ),
-      fetchWithCache('ALL_ELABORE_PRODUCERS_OVERVIEW', () =>
-        fetchAll(() => supabase
-          .from('sq_raw_consistencia_mensal')
-          .select('codigo_lr')).catch(() => [])
-      )
+      getElaboreCadastradosSet(supabase, fetchAll).catch(() => new Set())
     ]);
 
     const inativacoesSet = new Set();
@@ -348,10 +344,7 @@ module.exports = async (req, res) => {
         .map(item => String(item.codigo_lr).trim().toUpperCase())
     );
 
-    const cadastradosElaboreSet = new Set();
-    (allElaboreProducers || []).forEach(item => {
-      if (item.codigo_lr) cadastradosElaboreSet.add(String(item.codigo_lr).trim().toUpperCase());
-    });
+    const cadastradosElaboreSet = allElaboreProducers instanceof Set ? new Set(allElaboreProducers) : new Set();
     (fonteElabore || []).forEach(item => {
       if (item.codigo_lr) cadastradosElaboreSet.add(String(item.codigo_lr).trim().toUpperCase());
     });
@@ -717,9 +710,17 @@ module.exports = async (req, res) => {
         }
 
         const codLrNorm = String(v.codigo_lr || '').trim().toUpperCase();
+        const produtorNorm = String(v.nome_produtor || '').trim().toUpperCase();
+        const propriedadeNorm = String(v.nome_propriedade || produtorAtivo?.nome_propriedade || '').trim().toUpperCase();
         const monthKey = String(v.mes_referencia || refMonth || '').slice(0, 7);
         const elaboreObj = elaboreMensalMap.get(`${codLrNorm}_${monthKey}`);
-        const isCadastradoElabore = cadastradosElaboreSet.has(codLrNorm) || elaboreSet.has(codLrNorm);
+        
+        const isCadastradoElabore = 
+          cadastradosElaboreSet.has(codLrNorm) || 
+          (produtorNorm && cadastradosElaboreSet.has(produtorNorm)) || 
+          (propriedadeNorm && cadastradosElaboreSet.has(propriedadeNorm)) || 
+          elaboreSet.has(codLrNorm);
+
         const calcElab = calcularBlocosElabore(elaboreObj);
         const agro = mapAgroindustria(v.projeto || produtorAtivo?.projeto);
 

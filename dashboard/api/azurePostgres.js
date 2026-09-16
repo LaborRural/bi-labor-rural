@@ -493,4 +493,58 @@ async function getProdutoresAtivos(supabase, fetchAll, refMonth = null, maxAllow
   }, 5 * 60 * 1000);
 }
 
-module.exports = { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, fixMojibake, getProdutoresAtivos };
+async function getElaboreCadastradosSet(supabase, fetchAll) {
+  const cacheKey = 'ELABORE_CADASTRADOS_SET';
+  return fetchWithCache(cacheKey, async () => {
+    const cadastradosSet = new Set();
+
+    if (process.env.PG_HOST && process.env.PG_USER && process.env.PG_PASSWORD) {
+      try {
+        const client = new Client({
+          host: process.env.PG_HOST,
+          port: Number(process.env.PG_PORT || 5432),
+          database: process.env.PG_DATABASE || 'postgres',
+          user: process.env.PG_USER,
+          password: process.env.PG_PASSWORD,
+          ssl: { rejectUnauthorized: false },
+          connectionTimeoutMillis: 3000
+        });
+        await client.connect();
+        const schema = process.env.PG_SCHEMA || 'analytics_mart';
+        const res = await client.query(`SELECT DISTINCT labor_rural_code, entrepreneur_name, property_name FROM ${schema}.vw_dim_property;`);
+        (res.rows || []).forEach(r => {
+          if (r.labor_rural_code) {
+            cadastradosSet.add(String(r.labor_rural_code).trim().toUpperCase());
+          }
+          if (r.entrepreneur_name) {
+            cadastradosSet.add(String(r.entrepreneur_name).trim().toUpperCase());
+          }
+          if (r.property_name) {
+            cadastradosSet.add(String(r.property_name).trim().toUpperCase());
+          }
+        });
+        await client.end();
+        if (cadastradosSet.size > 0) return cadastradosSet;
+      } catch (err) {
+        console.warn('⚠️ Erro ao consultar Azure PostgreSQL (vw_dim_property) para cadastro Elabore:', err.message);
+      }
+    }
+
+    try {
+      const fazendas = await fetchAll(() =>
+        supabase
+          .from('sq_raw_consistencia_mensal')
+          .select('codigo_lr')
+      );
+      (fazendas || []).forEach(f => {
+        if (f.codigo_lr) cadastradosSet.add(String(f.codigo_lr).trim().toUpperCase());
+      });
+    } catch (errSupabase) {
+      console.warn('⚠️ Erro no fallback Supabase para cadastro Elabore:', errSupabase.message);
+    }
+
+    return cadastradosSet;
+  }, 10 * 60 * 1000);
+}
+
+module.exports = { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, fixMojibake, getProdutoresAtivos, getElaboreCadastradosSet };
