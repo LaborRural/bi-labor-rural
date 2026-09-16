@@ -874,10 +874,71 @@ def executar_reconciliacao(reindex_completo: bool = False):
     except Exception as e_vinc_ex2:
         print(f"   ℹ️ Aviso ao ler BD_BI_VINCULOS_COMPLETO.xlsx para dim_fazendas_ativas: {e_vinc_ex2}")
 
+    # ── VÍNCULOS E GRUPOS UNIFICADOS: Combinar LISTA_GERAL (df_todos) + sq_raw_vinculos (df_vinculos_base)
+    vinc_dict = {}
+    if not df_vinculos_base.empty:
+        for _, r_v in df_vinculos_base.iterrows():
+            c_v = str(r_v.get("codigo_lr") or "").strip().upper()
+            if c_v:
+                vinc_dict[c_v] = r_v.to_dict()
+
+    candidatos_list = []
+    # 1. Fazendas ativas da LISTA_GERAL_RELATORIO_DE_GRUPO (fonte primária e oficial)
+    for _, r_g in df_todos.iterrows():
+        c_prod = str(r_g.get("codigo_produtor") or "").strip()
+        if not c_prod or c_prod.lower() == "nan":
+            continue
+        st_g = str(r_g.get("status") or "").strip().lower()
+        if st_g != "ativo":
+            continue
+        v_info = vinc_dict.get(c_prod.upper(), {})
+        candidatos_list.append({
+            "codigo_lr": c_prod,
+            "nome_produtor": r_g.get("nome_produtor") or v_info.get("nome_produtor"),
+            "nome_propriedade": r_g.get("nome_propriedade") or v_info.get("nome_propriedade"),
+            "estado_produtor": r_g.get("estado") or v_info.get("estado_produtor"),
+            "cidade_produtor": r_g.get("cidade") or v_info.get("cidade_produtor"),
+            "tipo_ponto_atendimento": r_g.get("tipo_ponto_atendimento") or v_info.get("tipo_ponto_atendimento"),
+            "unidade_atendimento": r_g.get("unidade_atendimento") or v_info.get("unidade_atendimento"),
+            "grupo_atendimento": r_g.get("grupo_ponto_atendimento") or v_info.get("grupo_atendimento"),
+            "consultor_grupo_atendimento": r_g.get("nome_grupo_ponto_atendimento") or v_info.get("consultor_grupo_atendimento"),
+            "projeto": r_g.get("projeto") or v_info.get("projeto"),
+            "codigo_agroindustria": r_g.get("codigo_agroindustria") or v_info.get("codigo_agroindustria"),
+            "codigo_fazenda": r_g.get("codigo_fazenda") or v_info.get("codigo_fazenda"),
+            "data_associacao": v_info.get("data_associacao"),
+            "vinculo_ativo": True
+        })
+
+    # 2. Fazendas adicionais de sq_raw_vinculos que não constem na LISTA_GERAL
+    codigos_g_set = {str(item.get("codigo_lr") or "").strip().upper() for item in candidatos_list}
+    if not df_vinculos_base.empty:
+        for _, r_v in df_vinculos_base.iterrows():
+            c_v = str(r_v.get("codigo_lr") or "").strip()
+            if c_v and c_v.upper() not in codigos_g_set:
+                candidatos_list.append({
+                    "codigo_lr": c_v,
+                    "nome_produtor": r_v.get("nome_produtor"),
+                    "nome_propriedade": r_v.get("nome_propriedade"),
+                    "estado_produtor": r_v.get("estado_produtor"),
+                    "cidade_produtor": r_v.get("cidade_produtor"),
+                    "tipo_ponto_atendimento": r_v.get("tipo_ponto_atendimento"),
+                    "unidade_atendimento": r_v.get("unidade_atendimento"),
+                    "grupo_atendimento": r_v.get("grupo_atendimento"),
+                    "consultor_grupo_atendimento": r_v.get("consultor_grupo_atendimento"),
+                    "projeto": r_v.get("projeto"),
+                    "codigo_agroindustria": r_v.get("codigo_agroindustria"),
+                    "codigo_fazenda": r_v.get("codigo_fazenda"),
+                    "data_associacao": r_v.get("data_associacao"),
+                    "vinculo_ativo": r_v.get("vinculo_ativo")
+                })
+
+    df_base_candidatos = pd.DataFrame(candidatos_list).drop_duplicates(subset=["codigo_lr"])
+    print(f"   -> {len(df_base_candidatos)} produtores ativas mapeados como candidatos a sq_dim_fazendas_ativas.")
+
     for ref_m in meses_reconciliacao:
         novos_ativos_m = []
 
-        for _, r in df_vinculos_base.iterrows():
+        for _, r in df_base_candidatos.iterrows():
             c = str(r.get("codigo_lr") or "").strip()
             nome_p = str(r.get("nome_produtor") or "").strip()
 

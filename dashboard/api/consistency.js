@@ -186,8 +186,13 @@ module.exports = async (req, res) => {
       return rowMatches({ ...c, unidade_atendimento: p?.unidade_atendimento, nome_produtor: p?.nome_produtor });
     });
 
-    const consistenciaFiltrada = refMonth
-      ? (consistenciaHistorica || []).filter(c => (c.mes_elabore || c.mes_referencia) === refMonth)
+    const refMonthStr = refMonth ? String(refMonth).slice(0, 7) : null;
+    const consistenciaFiltrada = refMonthStr
+      ? (consistenciaHistorica || []).filter(c => {
+          const cRef = c.mes_referencia ? String(c.mes_referencia).slice(0, 7) : null;
+          const cElab = c.mes_elabore ? String(c.mes_elabore).slice(0, 7) : null;
+          return cRef === refMonthStr || (cElab && cElab === refMonthStr);
+        })
       : (consistenciaHistorica || []);
     const total = consistenciaFiltrada.length;
 
@@ -305,8 +310,8 @@ module.exports = async (req, res) => {
       const statusConsist = String(c.consistencia_mensal || '').toLowerCase();
       const refMonthStr = String(c.mes_referencia || '').slice(0, 7);
       const isCinthiaMissingMay = c.codigo_lr === 'LR10245' && refMonthStr === '2026-05';
-      const isSemDados = !c.mes_elabore || isCinthiaMissingMay || statusConsist.includes('sem dados') || statusConsist.includes('não calculado');
-      return !isSemDados && c.mes_elabore;
+      const isSemDados = isCinthiaMissingMay || !c.consistencia_mensal || statusConsist.includes('sem dados') || statusConsist.includes('não calculado');
+      return !isSemDados;
     }).map(c => c.codigo_lr).filter(Boolean)).size;
 
     const referencias = [...new Set((consistenciaHistorica || []).map(c => c.mes_referencia).filter(Boolean))]
@@ -315,8 +320,8 @@ module.exports = async (req, res) => {
     const evolucaoConsistencia = { labels: [], mensal: [], anual: [] };
     referencias.forEach(ref => {
       const registros = (consistenciaHistorica || []).filter(c => c.mes_referencia === ref);
-      const mensalAvaliado = registros.filter(c => c.mes_elabore && c.consistencia_mensal !== null && c.consistencia_mensal !== undefined);
-      const anualAvaliado = registros.filter(c => c.mes_elabore && c.consistencia_anual !== null && c.consistencia_anual !== undefined);
+      const mensalAvaliado = registros.filter(c => c.consistencia_mensal !== null && c.consistencia_mensal !== undefined && !String(c.consistencia_mensal).toLowerCase().includes('sem dados'));
+      const anualAvaliado = registros.filter(c => c.consistencia_anual !== null && c.consistencia_anual !== undefined && !String(c.consistencia_anual).toLowerCase().includes('sem dados'));
       evolucaoConsistencia.labels.push(monthLabel(ref));
       evolucaoConsistencia.mensal.push(mensalAvaliado.length ? Number(((mensalAvaliado.filter(c => isConsistent(c.consistencia_mensal)).length / mensalAvaliado.length) * 100).toFixed(1)) : 0);
       evolucaoConsistencia.anual.push(anualAvaliado.length ? Number(((anualAvaliado.filter(c => isConsistent(c.consistencia_anual)).length / anualAvaliado.length) * 100).toFixed(1)) : 0);
