@@ -874,6 +874,13 @@ def executar_reconciliacao(reindex_completo: bool = False):
     except Exception as e_vinc_ex2:
         print(f"   ℹ️ Aviso ao ler BD_BI_VINCULOS_COMPLETO.xlsx para dim_fazendas_ativas: {e_vinc_ex2}")
 
+    # Adicionar também todas as fazendas com Status = Ativo da LISTA_GERAL_RELATORIO_DE_GRUPO.xlsx
+    if not df_todos.empty and "status" in df_todos.columns and "codigo_produtor" in df_todos.columns:
+        m_at_lg = df_todos["status"].astype(str).str.strip().str.lower().isin(["true", "sim", "ativo", "1"])
+        codigos_lg_ativos = set(df_todos[m_at_lg]["codigo_produtor"].dropna().astype(str).str.strip().str.upper())
+        codigos_ativos_excel.update(codigos_lg_ativos)
+        print(f"   -> {len(codigos_lg_ativos)} fazendas ativas adicionadas a partir de LISTA_GERAL_RELATORIO_DE_GRUPO.xlsx (total ativos consolidados: {len(codigos_ativos_excel)}).")
+
     # ── VÍNCULOS E GRUPOS UNIFICADOS: Combinar LISTA_GERAL (df_todos) + sq_raw_vinculos (df_vinculos_base)
     vinc_dict = {}
     if not df_vinculos_base.empty:
@@ -955,17 +962,26 @@ def executar_reconciliacao(reindex_completo: bool = False):
             grupo_efetivo = grp_lg if grp_lg else grupo_val
             nome_grupo_efetivo = grp_limp_lg if grp_limp_lg else extrair_nome_grupo_limpo(grupo_efetivo)
 
-            # 0.1 Se o grupo contém CFT, NÃO sobe para a dimensão analítica
+            # Debug para rastreamento de João Pedro Sillos Damitto Tinoco
+            is_jp = "JOAO PEDRO" in str(grupo_efetivo).upper() or "JOÃO PEDRO" in str(grupo_efetivo).upper() or "SILLOS" in str(grupo_efetivo).upper()
+
+            # 0.1 Se o grupo/projeto for EXCLUSIVAMENTE CFT (sem nenhum consultor ou projeto oficial vinculado), NÃO sobe para a dimensão analítica
             proj_val = str(r.get("projeto") or "")
-            if "CFT" in grupo_efetivo.upper() or "CFT" in proj_val.upper():
+            if proj_val and proj_val.upper() == "CFT":
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por projeto exclusivo CFT")
+                continue
+            if not proj_val and "CFT" in grupo_efetivo.upper() and not nome_grupo_efetivo:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por grupo exclusivo CFT sem consultor oficial ({grupo_efetivo})")
                 continue
 
             # 0.2 Status do Consultor: Se todos os consultores do grupo estiverem inativos
             cons_resp = extrair_consultor_individual(r.get("consultor_grupo_atendimento"), grupo_efetivo)
             consultores_do_grupo = [p.strip().upper() for p in re.sub(r"\(.*?\)", "", grupo_efetivo).split("/") if p.strip()]
             if consultores_do_grupo and all(cg in consultores_inativos for cg in consultores_do_grupo):
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por consultores_inativos ({consultores_do_grupo})")
                 continue
             elif not consultores_do_grupo and cons_resp in consultores_inativos:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por cons_resp inativo ({cons_resp})")
                 continue
 
             # 1. Se a data de associação for posterior ao mês avaliado, ainda não existia
@@ -973,24 +989,27 @@ def executar_reconciliacao(reindex_completo: bool = False):
             dt_assoc_p = pd.to_datetime(dt_assoc, errors="coerce")
 
             if pd.notna(dt_assoc_p) and dt_assoc_p.strftime("%Y-%m-01") > ref_m:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por data_associacao posterior ({dt_assoc_p.strftime('%Y-%m-%d')} > {ref_m})")
                 continue
 
             # 2. REGRA PRINCIPAL: Usar BD_BI_VINCULOS_COMPLETO.xlsx como fonte de verdade.
-            # Se o produtor TEM inativação registrada E NÃO está ativo na planilha oficial
-            # -> está inativo neste mês (se a inativação já ocorreu).
-            # Se está ativo na planilha oficial (ex: LR06033), o status ATIVO prevalece.
             is_ativo_excel = c.upper() in codigos_ativos_excel
             if not is_ativo_excel and c in inativacoes_por_codigo and inativacoes_por_codigo[c] <= ref_m:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por inativacoes_por_codigo ({inativacoes_por_codigo[c]} <= {ref_m})")
                 continue
 
             # 3. Se vinculo_ativo é False no Supabase e o produtor já estava inativo
             v_ativo = r.get("vinculo_ativo")
             if v_ativo is False and c in inativacoes_por_codigo:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por vinculo_ativo False com inativacao")
                 continue
 
             # 4. Se o produtor foi cadastrado como novo em data > ref_m: ainda não havia entrado
             if c in cadastros_por_codigo and cadastros_por_codigo[c] > ref_m:
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por cadastros_por_codigo ({cadastros_por_codigo[c]} > {ref_m})")
                 continue
+
+            if is_jp: print(f"   [DEBUG JP {ref_m}] ✅ {c} INCLUÍDO em sq_dim_fazendas_ativas ({nome_grupo_efetivo})")
 
             # Tratamentos dimensionais de projeto, cadeia, agroindústria e região
             proj_final = proj_val.strip().upper() if proj_val else None
