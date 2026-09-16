@@ -1129,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     visited = sortRows(visited, tableSort.tbodyVisitados, (row, key) => row[key]);
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
-    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 8, (row) => {
+    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 7, (row) => {
       const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore);
       const cadBadge = isCad
         ? '<span class="badge badge-positive">SIM</span>'
@@ -1158,7 +1158,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="col-center">${escapeHtml(row.data_visita || '—')}</td>
         <td class="col-center">${cadBadge}</td>
         <td class="col-center">${dataBadge}</td>
-        <td class="col-center"><button class="btn-elabore-detail" type="button" data-lr="${escapeHtml(row.codigo_lr || '')}">Ver detalhes ›</button></td>
       </tr>`;
     });
     renderTablePagination('paginationVisitados', 'tableVisitados', visited.length);
@@ -1195,10 +1194,29 @@ document.addEventListener('DOMContentLoaded', () => {
     withData = sortRows(withData, tableSort.tbodyDataProducers, (row, key) => key === 'produtor' ? (row.produtor || row.codigo_lr) : row[key]);
     updateTableHeadIcons('tbodyDataProducers', tableSort.tbodyDataProducers.colKey, tableSort.tbodyDataProducers.dir);
     const pWithData = getPaginatedSlice('tableDataProducers', withData);
-    if (el('tbodyDataProducers')) el('tbodyDataProducers').innerHTML = rowsOrEmpty(pWithData, 6, (row) => {
-      const noData = row.possui_dados === false;
+    if (el('tbodyDataProducers')) el('tbodyDataProducers').innerHTML = rowsOrEmpty(pWithData, 7, (row) => {
+      const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore ?? true);
+      const cadBadge = isCad
+        ? '<span class="badge badge-positive">SIM</span>'
+        : '<span class="badge badge-neutral">NÃO</span>';
+      
+      const statusDados = row.dados_elabore_status || (row.possui_dados ? 'SIM (100%)' : 'NÃO (0%)');
+      const hasData = row.dados_elabore_tem_dado ?? row.possui_dados;
+      const pct = row.dados_elabore_pct ?? (hasData ? 100 : 0);
+
+      let dataBadgeClass = 'badge-neutral';
+      if (pct >= 80) {
+        dataBadgeClass = 'badge-positive';
+      } else if (pct > 0) {
+        dataBadgeClass = 'badge-warning';
+      } else {
+        dataBadgeClass = isCad ? 'badge-danger' : 'badge-neutral';
+      }
+
+      const dataBadge = `<span class="badge ${dataBadgeClass}">${escapeHtml(statusDados)}</span>`;
       const prodName = row.produtor || row.codigo_lr || '—';
-      return `<tr class="${noData ? 'table-row-grave' : ''}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(prodName)}">${escapeHtml(prodName)}</td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center"><span class="badge ${noData ? 'badge-danger' : 'badge-positive'}">${noData ? 'NÃO' : 'SIM'}</span></td><td class="col-center">${escapeHtml(row.referencia || '—')}</td><td class="col-center"><span class="badge ${String(row.status).toUpperCase() === 'INATIVO' ? 'badge-danger' : 'badge-positive'}">${escapeHtml(row.status || 'ATIVO')}</span></td></tr>`;
+
+      return `<tr class="${!hasData && isCad ? 'table-row-grave' : ''}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(prodName)}">${escapeHtml(prodName)}</td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center">${escapeHtml(row.referencia || '—')}</td><td class="col-center">${cadBadge}</td><td class="col-center">${dataBadge}</td><td class="col-center"><button class="btn-elabore-detail" type="button" data-lr="${escapeHtml(row.codigo_lr || '')}">Ver detalhes ›</button></td></tr>`;
     });
     renderTablePagination('paginationDataProducers', 'tableDataProducers', withData.length);
 
@@ -2721,8 +2739,13 @@ document.addEventListener('DOMContentLoaded', () => {
   setupProvenanceModal();
 
   function abrirModalDetalhesElabore(codigoLr) {
-    if (!state.overview || !state.overview.tabelas || !state.overview.tabelas.visitados) return;
-    const row = state.overview.tabelas.visitados.find(v => String(v.codigo_lr).trim().toUpperCase() === String(codigoLr).trim().toUpperCase());
+    const targetLr = String(codigoLr || '').trim().toUpperCase();
+    if (!targetLr) return;
+
+    const row = (state.overview?.tabelas?.visitados || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr)
+      || (state.consistency?.tabelaProdutoresComDados || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr)
+      || (state.consistency?.tabelaInconsistentes || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr);
+
     if (!row) return;
 
     const overlay = el('modalElaboreOverlay');
@@ -2730,22 +2753,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const refMonthEl = el('modalElaboreRefMonthText');
     if (!overlay || !modalBody) return;
 
-    const anoMes = row.mes_referencia ? String(row.mes_referencia).slice(0, 7) : '—';
-    const refMonthText = row.mes_referencia ? String(row.mes_referencia).slice(0, 7).split('-').reverse().join('/') : '--/----';
+    const refMonthRaw = row.mes_referencia || state.consistency?.refMonth || state.overview?.refMonth || '';
+    const anoMes = refMonthRaw ? String(refMonthRaw).slice(0, 7) : '—';
+    const refMonthText = refMonthRaw ? String(refMonthRaw).slice(0, 7).split('-').reverse().join('/') : '--/----';
     if (refMonthEl) refMonthEl.textContent = refMonthText;
 
+    const defaultOk = row.possui_dados !== false && Boolean(row.elabore_ok || row.dados_elabore_tem_dado || row.possui_dados);
     const b = row.detalhes_blocos || {
-      receita: row.elabore_ok,
-      qualidade: row.elabore_ok,
-      alimentacao: row.elabore_ok,
-      area: row.elabore_ok,
-      rebanho: row.elabore_ok,
-      mdo: row.elabore_ok,
-      energia: row.elabore_ok,
-      despesas: row.elabore_ok
+      receita: row.elabore_ok ?? defaultOk,
+      qualidade: row.elabore_ok ?? defaultOk,
+      alimentacao: row.elabore_ok ?? defaultOk,
+      area: row.elabore_ok ?? defaultOk,
+      rebanho: row.elabore_ok ?? defaultOk,
+      mdo: row.elabore_ok ?? defaultOk,
+      energia: row.elabore_ok ?? defaultOk,
+      despesas: row.elabore_ok ?? defaultOk
     };
 
-    const temDado = row.dados_elabore_tem_dado || row.elabore_ok;
+    const temDado = row.dados_elabore_tem_dado ?? row.elabore_ok ?? defaultOk;
     const statusBadge = String(row.status || 'ATIVO').toUpperCase() === 'INATIVO' ? 'badge-danger' : 'badge-positive';
 
     const blocosConfig = [

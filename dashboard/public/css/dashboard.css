@@ -1372,6 +1372,8 @@ body.table-resizing * {
 .col-left { text-align: left !important; }
 .col-center { text-align: center !important; }
 .col-right { text-align: right !important; }
+.col-center .table-col-filter,
+th.col-center .table-col-filter { text-align: center !important; }
 .font-tabular { font-variant-numeric: tabular-nums; }
 
 /* Larguras de Colunas Otimizadas por Tabela */
@@ -1387,13 +1389,18 @@ body.table-resizing * {
 
 /* Tabela 2: Produtores visitados */
 #tableVisitados th:nth-child(1) { width: 8%; }
-#tableVisitados th:nth-child(2) { width: 18%; }
-#tableVisitados th:nth-child(3) { width: 24%; }
+#tableVisitados th:nth-child(2) { width: 20%; }
+#tableVisitados th:nth-child(3) { width: 26%; }
 #tableVisitados th:nth-child(4) { width: 8%; }
-#tableVisitados th:nth-child(5) { width: 10%; }
-#tableVisitados th:nth-child(6) { width: 10%; }
-#tableVisitados th:nth-child(7) { width: 10%; }
-#tableVisitados th:nth-child(8) { width: 12%; }
+#tableVisitados th:nth-child(5) { width: 12%; text-align: center !important; }
+#tableVisitados th:nth-child(6) { width: 13%; text-align: center !important; }
+#tableVisitados th:nth-child(7) { width: 13%; text-align: center !important; }
+
+#tableVisitados td:nth-child(5),
+#tableVisitados td:nth-child(6),
+#tableVisitados td:nth-child(7) {
+  text-align: center !important;
+}
 
 .btn-elabore-detail,
 .link-button {
@@ -1484,12 +1491,19 @@ body.table-resizing * {
 #tableConsultants th:nth-child(6) { width: 13%; }
 
 /* Tabela 5: Produtores com dados */
-#tableDataProducers th:nth-child(1) { width: 12%; }
-#tableDataProducers th:nth-child(2) { width: 27%; }
-#tableDataProducers th:nth-child(3) { width: 24%; }
-#tableDataProducers th:nth-child(4) { width: 12%; }
-#tableDataProducers th:nth-child(5) { width: 12%; }
-#tableDataProducers th:nth-child(6) { width: 13%; }
+#tableDataProducers th:nth-child(1) { width: 8%; }
+#tableDataProducers th:nth-child(2) { width: 24%; }
+#tableDataProducers th:nth-child(3) { width: 18%; }
+#tableDataProducers th:nth-child(4) { width: 10%; text-align: center !important; }
+#tableDataProducers th:nth-child(5) { width: 13%; text-align: center !important; }
+#tableDataProducers th:nth-child(6) { width: 13%; text-align: center !important; }
+#tableDataProducers th:nth-child(7) { width: 14%; }
+
+#tableDataProducers td:nth-child(4),
+#tableDataProducers td:nth-child(5),
+#tableDataProducers td:nth-child(6) {
+  text-align: center !important;
+}
 
 /* Tabela 6: Inconsistências identificadas */
 #tableInconsistencies {

@@ -327,23 +327,80 @@ module.exports = async (req, res) => {
       evolucaoConsistencia.anual.push(anualAvaliado.length ? Number(((anualAvaliado.filter(c => isConsistent(c.consistencia_anual)).length / anualAvaliado.length) * 100).toFixed(1)) : 0);
     });
 
-    const tabelaProdutoresComDados = consistenciaFiltrada.map(c => {
+    const consistenciaMap = new Map();
+    (consistenciaFiltrada || []).forEach(c => {
+      if (c.codigo_lr) consistenciaMap.set(String(c.codigo_lr).trim().toUpperCase(), c);
+    });
+
+    const activeSet = new Set();
+    const tabelaProdutoresComDados = (produtoresAtivos || []).map(p => {
+      const cdLrUpper = String(p.codigo_lr || '').trim().toUpperCase();
+      activeSet.add(cdLrUpper);
+      const c = consistenciaMap.get(cdLrUpper);
+      const metaFallback = fallbackMetaMap.get(p.codigo_lr);
+      const refMonthStr = String(c?.mes_referencia || refMonth || '').slice(0, 7);
+      const mKey = `${cdLrUpper}_${refMonthStr}`;
+      const mensalDirect = mensalRefMap.get(mKey) || mensalRefMap.get(cdLrUpper);
+      const statusConsist = String(mensalDirect ? mensalDirect.consistencia_mensal : (c?.consistencia_mensal || '')).toLowerCase();
+      const hasNoMensalRecord = !mensalDirect && (!c || (!c.mes_elabore && !c.consistencia_mensal));
+      const isCinthiaMissingMay = (p.codigo_lr === 'LR10245' || String(p.nome_produtor || '').toLowerCase().includes('cinthia')) && refMonthStr === '2026-05';
+      const isSemDados = hasNoMensalRecord || isCinthiaMissingMay || !statusConsist || statusConsist.includes('sem dados') || statusConsist.includes('não calculado') || statusConsist.includes('nao calculado');
+      const possuiDados = Boolean(!isSemDados);
+      const prodName = p.nome_produtor || metaFallback?.nome_produtor || p.codigo_lr || 'PRODUTOR';
+      const consultoresSanitizados = sanitizeConsultorList(p.nome_consultor || c?.nome_consultor || metaFallback?.nome_consultor);
+      const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
+      const mesRefVal = c?.mes_referencia || refMonth;
+
+      const isCad = c?.excecao !== 1 && c?.excecao !== true;
+      const cadLabel = isCad ? 'SIM' : 'NÃO';
+      const dadosPct = possuiDados ? 100 : 0;
+      const dadosStatus = possuiDados ? 'SIM (100%)' : 'NÃO (0%)';
+
+      return {
+        codigo_lr: p.codigo_lr || '-',
+        produtor: prodName,
+        consultor: consultorNome,
+        agroindustria: mapAgroindustria(p.projeto || metaFallback?.projeto || c?.projeto),
+        regiao: getRegiao(p.codigo_lr, p.unidade_atendimento || metaFallback?.unidade_atendimento, p.projeto || metaFallback?.projeto || c?.projeto),
+        projeto: p.projeto || metaFallback?.projeto || c?.projeto || 'NÃO INFORMADO',
+        mes_referencia: mesRefVal,
+        possui_dados: possuiDados,
+        cadastro_elabore: isCad,
+        cadastro_elabore_label: cadLabel,
+        dados_elabore_pct: dadosPct,
+        dados_elabore_status: dadosStatus,
+        dados_elabore_tem_dado: possuiDados,
+        referencia: mesRefVal ? new Date(`${String(mesRefVal).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-',
+        status: 'ATIVO'
+      };
+    });
+
+    // Inclui produtores inativos históricos presentes em consistenciaFiltrada
+    (consistenciaFiltrada || []).forEach(c => {
+      const cdLrUpper = String(c.codigo_lr || '').trim().toUpperCase();
+      if (!cdLrUpper || activeSet.has(cdLrUpper)) return;
+      activeSet.add(cdLrUpper);
+
       const produtor = produtoresMap.get(c.codigo_lr);
       const metaFallback = fallbackMetaMap.get(c.codigo_lr);
-      const cdLrUpper = String(c.codigo_lr || '').trim().toUpperCase();
       const refMonthStr = String(c.mes_referencia || '').slice(0, 7);
       const mKey = `${cdLrUpper}_${refMonthStr}`;
       const mensalDirect = mensalRefMap.get(mKey) || mensalRefMap.get(cdLrUpper);
       const statusConsist = String(mensalDirect ? mensalDirect.consistencia_mensal : (c.consistencia_mensal || '')).toLowerCase();
       const hasNoMensalRecord = !mensalDirect && !c.mes_elabore && !c.consistencia_mensal;
       const isCinthiaMissingMay = (c.codigo_lr === 'LR10245' || String(produtor?.nome_produtor || '').toLowerCase().includes('cinthia')) && refMonthStr === '2026-05';
-      const isSemDados = hasNoMensalRecord || isCinthiaMissingMay || statusConsist.includes('sem dados') || statusConsist.includes('não calculado');
+      const isSemDados = hasNoMensalRecord || isCinthiaMissingMay || statusConsist.includes('sem dados') || statusConsist.includes('não calculated') || statusConsist.includes('nao calculado');
       const possuiDados = Boolean(!isSemDados);
       const prodName = produtor?.nome_produtor || metaFallback?.nome_produtor || c.codigo_lr || 'PRODUTOR';
       const consultoresSanitizados = sanitizeConsultorList(c.nome_consultor || produtor?.nome_consultor || metaFallback?.nome_consultor);
       const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
 
-      return {
+      const isCad = c.excecao !== 1 && c.excecao !== true;
+      const cadLabel = isCad ? 'SIM' : 'NÃO';
+      const dadosPct = possuiDados ? 100 : 0;
+      const dadosStatus = possuiDados ? 'SIM (100%)' : 'NÃO (0%)';
+
+      tabelaProdutoresComDados.push({
         codigo_lr: c.codigo_lr || '-',
         produtor: prodName,
         consultor: consultorNome,
@@ -352,9 +409,14 @@ module.exports = async (req, res) => {
         projeto: c.projeto || produtor?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
         mes_referencia: c.mes_referencia || refMonth,
         possui_dados: possuiDados,
+        cadastro_elabore: isCad,
+        cadastro_elabore_label: cadLabel,
+        dados_elabore_pct: dadosPct,
+        dados_elabore_status: dadosStatus,
+        dados_elabore_tem_dado: possuiDados,
         referencia: c.mes_referencia ? new Date(`${String(c.mes_referencia).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-',
-        status: produtoresMap.has(c.codigo_lr) ? 'ATIVO' : 'INATIVO'
-      };
+        status: 'INATIVO'
+      });
     });
 
     return res.status(200).json({
