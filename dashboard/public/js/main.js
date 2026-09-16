@@ -2700,6 +2700,14 @@ document.addEventListener('DOMContentLoaded', () => {
         e.stopPropagation();
         const panel = btn.closest('.panel-card');
         if (!panel) return;
+        if (panel.id === 'panelElabore') {
+          closeElabore();
+          return;
+        }
+        if (panel.querySelector('#tableDataProducers')) {
+          openElabore();
+          return;
+        }
         if (panel.classList.contains('is-fullscreen')) {
           closePanelFullscreen();
         } else {
@@ -2708,7 +2716,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (e.target === fsBackdrop) {
+      // Se clicou no backdrop de tela cheia ou no container exterior de tela cheia, fecha a tela cheia
+      if (e.target === fsBackdrop || e.target.classList.contains('panel-fullscreen-backdrop')) {
+        const modalDet = el('modalDet');
+        const modalElabore = el('modalElaboreOverlay');
+        if (modalDet?.classList.contains('active') || modalElabore?.classList.contains('active')) {
+          return;
+        }
+        closeElabore();
         closePanelFullscreen();
       }
     });
@@ -2738,151 +2753,404 @@ document.addEventListener('DOMContentLoaded', () => {
   setupKpiInfoPopovers();
   setupProvenanceModal();
 
-  function abrirModalDetalhesElabore(codigoLr) {
-    const targetLr = String(codigoLr || '').trim().toUpperCase();
-    if (!targetLr) return;
+  // ─── PAINEL DADOS ELABORE (TELA CHEIA DOS 8 BLOCOS) ─────────────────────
 
-    const row = (state.overview?.tabelas?.visitados || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr)
-      || (state.consistency?.tabelaProdutoresComDados || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr)
-      || (state.consistency?.tabelaInconsistentes || []).find(v => String(v.codigo_lr || '').trim().toUpperCase() === targetLr);
+  const BLOCOS_ELABORE = [
+    ['receita', 'Receita', 'Receita', 'Faturamento bruto e venda de leite/animais'],
+    ['qualidade', 'Qualidade', 'Qualidade', 'CCS, CBT, gordura e proteína'],
+    ['alimentacao', 'Alimentação', 'Alimentação', 'Volumoso, ração e concentrados'],
+    ['area', 'Área', 'Área', 'Hectares e uso da terra'],
+    ['rebanho', 'Rebanho', 'Rebanho', 'Inventário e categorias de animais'],
+    ['mdo', 'MDO', 'Mão de Obra', 'Trabalho familiar e contratado'],
+    ['energia_combustivel', 'Energia e Combustível', 'Energia e Combustível', 'Energia elétrica e diesel'],
+    ['despesas', 'Outras Despesas', 'Outras Despesas', 'Medicamentos, fretes e manutenção']
+  ];
 
-    if (!row) return;
+  const GRUPOS_ELABORE = [
+    ['todos', 'Todos os produtores'],
+    ['completo', '100% dos blocos (8/8)'],
+    ['parcial', 'Preenchimento parcial (1 a 7)'],
+    ['semdados', 'Nenhum bloco (0/8)'],
+    ['nocad', 'Sem cadastro no Elabore']
+  ];
 
-    const overlay = el('modalElaboreOverlay');
-    const modalBody = el('modalElaboreBody');
-    const refMonthEl = el('modalElaboreRefMonthText');
-    if (!overlay || !modalBody) return;
+  let elaboreState = {
+    grupo: 'todos',
+    sort: { k: 'cod', dir: 1 },
+    filtros: {},
+    page: 1,
+    size: 25
+  };
 
-    const refMonthRaw = row.mes_referencia || state.consistency?.refMonth || state.overview?.refMonth || '';
-    const anoMes = refMonthRaw ? String(refMonthRaw).slice(0, 7) : '—';
-    const refMonthText = refMonthRaw ? String(refMonthRaw).slice(0, 7).split('-').reverse().join('/') : '--/----';
-    if (refMonthEl) refMonthEl.textContent = refMonthText;
+  function getElaboreRows() {
+    const list = state.consistency?.tabelaProdutoresComDados || [];
+    return list.map((r) => {
+      const cod = r.codigo_lr || '—';
+      const produtor = r.produtor || cod;
+      const consultor = r.consultor || 'NÃO INFORMADO';
+      const projeto = r.projeto || 'NÃO INFORMADO';
+      const data = r.referencia || '—';
+      const isCad = r.cadastro_elabore !== false && r.cadastro_elabore !== 'NÃO' && String(r.cadastro_elabore_label || '').toUpperCase() !== 'NÃO';
+      const cad = isCad ? 'SIM' : 'NÃO';
+      const b = r.detalhes_blocos || {
+        receita: false, qualidade: false, alimentacao: false, area: false,
+        rebanho: false, mdo: false, energia_combustivel: false, despesas: false
+      };
 
-    const defaultOk = row.possui_dados !== false && Boolean(row.elabore_ok || row.dados_elabore_tem_dado || row.possui_dados);
-    const b = row.detalhes_blocos || {
-      receita: row.elabore_ok ?? defaultOk,
-      qualidade: row.elabore_ok ?? defaultOk,
-      alimentacao: row.elabore_ok ?? defaultOk,
-      area: row.elabore_ok ?? defaultOk,
-      rebanho: row.elabore_ok ?? defaultOk,
-      mdo: row.elabore_ok ?? defaultOk,
-      energia: row.elabore_ok ?? defaultOk,
-      despesas: row.elabore_ok ?? defaultOk
-    };
+      const nBlocks = Object.values(b).filter(Boolean).length;
+      const pct = Math.round((nBlocks / 8) * 100);
+      const status = nBlocks > 0 ? `SIM (${pct}%)` : 'NÃO (0%)';
 
-    const temDado = row.dados_elabore_tem_dado ?? row.elabore_ok ?? defaultOk;
-    const statusBadge = String(row.status || 'ATIVO').toUpperCase() === 'INATIVO' ? 'badge-danger' : 'badge-positive';
+      let grupo = 'semdados';
+      if (!isCad) {
+        grupo = 'nocad';
+      } else if (nBlocks === 8) {
+        grupo = 'completo';
+      } else if (nBlocks > 0) {
+        grupo = 'parcial';
+      }
 
-    const blocosConfig = [
-      { nome: 'Disponibilidade de Dados (Geral)', ok: temDado, desc: 'Relatório e lançamentos analíticos disponíveis no Elabore' },
-      { nome: 'Possui Receita', ok: b.receita, desc: 'Presença de lançamentos de faturamento bruto e produção de leite' },
-      { nome: 'Possui Qualidade', ok: b.qualidade, desc: 'Parâmetros físico-químicos e microbiológicos (CCS, CBT, Gordura, Proteína)' },
-      { nome: 'Possui Alimentação', ok: b.alimentacao, desc: 'Lançamentos de despesas com volumoso, ração e concentrados' },
-      { nome: 'Possui Área', ok: b.area, desc: 'Informações de hectares e área destinada à atividade leiteira' },
-      { nome: 'Possui Rebanho', ok: b.rebanho, desc: 'Inventário de vacas em lactação, vacas secas e novilhas' },
-      { nome: 'Possui Mão de Obra (MDO)', ok: b.mdo, desc: 'Despesas e contingente de trabalhadores familiares e contratados' },
-      { nome: 'Possui Energia e Combustível', ok: b.energia, desc: 'Lançamentos de energia elétrica, diesel e combustíveis operacionais' },
-      { nome: 'Possui Outras Despesas', ok: b.despesas, desc: 'Despesas operacionais diversas, medicamentos, fretes e manutenção' }
+      return {
+        cod,
+        produtor,
+        consultor,
+        projeto,
+        data,
+        cad,
+        pct,
+        status,
+        grupo,
+        n: nBlocks,
+        receita: b.receita ? 'SIM' : 'NÃO',
+        qualidade: b.qualidade ? 'SIM' : 'NÃO',
+        alimentacao: b.alimentacao ? 'SIM' : 'NÃO',
+        area: b.area ? 'SIM' : 'NÃO',
+        rebanho: b.rebanho ? 'SIM' : 'NÃO',
+        mdo: b.mdo ? 'SIM' : 'NÃO',
+        energia_combustivel: (b.energia_combustivel || b.energia) ? 'SIM' : 'NÃO',
+        despesas: b.despesas ? 'SIM' : 'NÃO',
+        raw: r
+      };
+    });
+  }
+
+  function pctClassElabore(pct) {
+    if (pct >= 80) return 'badge-positive';
+    if (pct > 0) return 'badge-warning';
+    return 'badge-danger';
+  }
+
+  function renderElaboreHead() {
+    const elHead = el('elHead');
+    const elFilters = el('elFilters');
+    if (!elHead || !elFilters) return;
+
+    const COLS = [
+      { k: 'cod', t: 'ID', blk: false },
+      { k: 'consultor', t: 'Consultor(a)', blk: false },
+      { k: 'produtor', t: 'Produtor(a)', blk: false },
+      { k: 'projeto', t: 'Projeto', blk: false },
+      { k: 'data', t: 'Últ. Ref.', blk: false },
+      { k: 'cad', t: 'Cadastro Elabore', blk: false },
+      { k: 'pct', t: 'Dados Elabore', blk: false },
+      ...BLOCOS_ELABORE.map(([k, t]) => ({ k, t, blk: true }))
     ];
 
-    const blocosRowsHtml = blocosConfig.map(c => `
-      <tr>
-        <td class="col-left"><strong>${escapeHtml(c.nome)}</strong></td>
-        <td class="col-center">
-          <span class="badge ${c.ok ? 'badge-positive' : 'badge-danger'}">
-            ${c.ok ? 'SIM' : 'NÃO'}
-          </span>
-        </td>
-        <td class="col-left" style="color:var(--muted); font-size:11px;">${escapeHtml(c.desc)}</td>
-      </tr>
-    `).join('');
-
-    modalBody.innerHTML = `
-      <fieldset class="modal-fieldset">
-        <legend class="modal-legend">Informações do Produtor e Vínculo</legend>
-        <div class="detail-grid">
-          <div class="detail-field">
-            <label class="field-label">Código LR</label>
-            <div class="field-box">${escapeHtml(row.codigo_lr || '—')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Produtor(a)</label>
-            <div class="field-box field-box--bold">${escapeHtml(row.produtor || '—')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Consultor(a) Técnico(a)</label>
-            <div class="field-box">${escapeHtml(row.consultor || '—')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Agroindústria</label>
-            <div class="field-box">${escapeHtml(row.agroindustria || row.projeto || '—')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Propriedade / Região</label>
-            <div class="field-box">${escapeHtml(row.propriedade || row.regiao || 'FAZENDA')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Projeto / Programa</label>
-            <div class="field-box">${escapeHtml(row.projeto || '—')}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Ano-Mês Referência</label>
-            <div class="field-box">${escapeHtml(anoMes)}</div>
-          </div>
-          <div class="detail-field">
-            <label class="field-label">Status Cadastral</label>
-            <div class="field-box"><span class="badge ${statusBadge}">${escapeHtml(row.status || 'ATIVO')}</span></div>
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset class="modal-fieldset">
-        <legend class="modal-legend">Detalhamento dos Lançamentos por Bloco (Elabore)</legend>
-        <div class="table-scroll" style="max-height: 280px;">
-          <table class="data-table data-table--modal">
-            <thead>
-              <tr>
-                <th class="col-left" style="width: 35%;">Bloco / Módulo Analítico</th>
-                <th class="col-center" style="width: 15%;">Status</th>
-                <th class="col-left" style="width: 50%;">Descrição do Lançamento</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${blocosRowsHtml}
-            </tbody>
-          </table>
-        </div>
-      </fieldset>
+    elHead.innerHTML = `
+      <th class="col-center" data-key="cod">ID</th>
+      <th class="col-left" data-key="consultor">Consultor(a)</th>
+      <th class="col-left" data-key="produtor">Produtor(a)</th>
+      <th class="col-left" data-key="projeto">Projeto</th>
+      <th class="col-center" data-key="data">Últ. Ref.</th>
+      <th class="col-center" data-key="cad">Cadastro Elabore</th>
+      <th class="col-center" data-key="pct">Dados Elabore
+        <button class="kpi-info-btn" type="button" aria-label="Informações sobre a coluna Dados Elabore" data-info-title="Dados Elabore" data-info-body="Indica a presença e o percentual de preenchimento dos 8 blocos gerenciais do Elabore no mês de referência. Ex: SIM (67%) ou NÃO (0%)."><span class="material-symbols-rounded" aria-hidden="true">info</span></button>
+      </th>
+      <th class="det-col">Ação</th>
+      ${BLOCOS_ELABORE.map(([k, t], i) => `<th class="blk ${i === 0 ? 'first-blk' : ''}" data-key="${k}">${t}</th>`).join('')}
     `;
 
-    overlay.classList.add('active');
-    overlay.setAttribute('aria-hidden', 'false');
+    const filterCell = (c) => `<th class="${c.blk ? 'blk' : c.k === 'cod' || c.k === 'data' || c.k === 'cad' || c.k === 'pct' ? 'col-center' : 'col-left'}">${
+      c.k === 'cad' || c.blk
+        ? `<select class="table-col-filter" data-col="${c.k}" aria-label="Filtrar ${c.t}"><option value="">${c.blk ? '–' : 'Todos'}</option><option>SIM</option><option>NÃO</option></select>`
+        : `<input type="text" class="table-col-filter" data-col="${c.k}" placeholder="Filtrar..." aria-label="Filtrar ${c.t}">`
+    }</th>`;
+
+    elFilters.innerHTML = COLS.slice(0, 7).map(filterCell).join('') + '<th class="det-col"></th>' + COLS.slice(7).map(filterCell).join('');
   }
+
+  function filteredElaboreRows(ignoreGrupo = false) {
+    const rows = getElaboreRows();
+    const f = Object.entries(elaboreState.filtros).filter(([, v]) => v);
+    return rows.filter((r) => {
+      if (!ignoreGrupo && elaboreState.grupo !== 'todos' && r.grupo !== elaboreState.grupo) return false;
+      return f.every(([k, v]) => {
+        const val = k === 'pct' ? r.status : String(r[k] || '');
+        const filterInput = el('elFilters')?.querySelector(`[data-col="${k}"]`);
+        if (filterInput && filterInput.tagName === 'SELECT') {
+          return !v || val.toUpperCase() === v.toUpperCase();
+        }
+        return val.toLowerCase().includes(v.toLowerCase());
+      });
+    });
+  }
+
+  function renderElaborePanel() {
+    const base = filteredElaboreRows(true);
+    const chipsEl = el('elChips');
+    if (chipsEl) {
+      chipsEl.innerHTML = GRUPOS_ELABORE.map(([g, t]) => {
+        const count = g === 'todos' ? base.length : base.filter((r) => r.grupo === g).length;
+        return `<button type="button" class="el-chip ${elaboreState.grupo === g ? 'on' : ''}" data-g="${g}">${t} <b>${count}</b></button>`;
+      }).join('');
+    }
+
+    const { k, dir } = elaboreState.sort;
+    const list = filteredElaboreRows(false).sort((a, b) => {
+      const x = a[k] ?? '', y = b[k] ?? '';
+      const comp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+      return comp * dir || String(a.produtor).localeCompare(String(b.produtor));
+    });
+
+    document.querySelectorAll('#elHead th[data-key]').forEach((th) => {
+      th.classList.toggle('sort-asc', th.dataset.key === k && dir === 1);
+      th.classList.toggle('sort-desc', th.dataset.key === k && dir === -1);
+    });
+
+    const pages = elaboreState.size ? Math.max(1, Math.ceil(list.length / elaboreState.size)) : 1;
+    elaboreState.page = Math.min(elaboreState.page, pages);
+    const start = elaboreState.size ? (elaboreState.page - 1) * elaboreState.size : 0;
+    const slice = elaboreState.size ? list.slice(start, start + elaboreState.size) : list;
+
+    if (el('elCount')) el('elCount').textContent = `${list.length.toLocaleString('pt-BR')} registros`;
+
+    const icon = (v, nome) => v === 'SIM'
+      ? `<span class="material-symbols-rounded ic ic-ok" title="${nome}: possui">check_circle</span>`
+      : v === 'NÃO'
+      ? `<span class="material-symbols-rounded ic ic-no" title="${nome}: não possui">cancel</span>`
+      : `<span class="material-symbols-rounded ic ic-na" title="Sem cadastro no Elabore">remove</span>`;
+
+    const bodyEl = el('elBody');
+    if (bodyEl) {
+      bodyEl.innerHTML = slice.length ? slice.map((r) => `<tr class="${r.cad === 'NÃO' ? 'row-nocad' : ''}" data-cod="${escapeHtml(r.cod)}">
+        <td class="col-center"><strong>${escapeHtml(r.cod)}</strong></td>
+        <td class="col-left" title="${escapeHtml(r.consultor)}">${escapeHtml(r.consultor)}</td>
+        <td class="col-left" title="${escapeHtml(r.produtor)}">${escapeHtml(r.produtor)}</td>
+        <td class="col-left" title="${escapeHtml(r.projeto)}">${escapeHtml(r.projeto)}</td>
+        <td class="col-center">${escapeHtml(r.data)}</td>
+        <td class="col-center cell-trigger-detail" data-action="detail" title="Clique para ver os detalhes deste produtor"><span class="badge ${r.cad === 'SIM' ? 'badge-positive' : 'badge-neutral'}">${r.cad}</span></td>
+        <td class="col-center cell-trigger-detail" data-action="detail" title="Clique para ver os detalhes deste produtor"><span class="badge ${r.cad === 'NÃO' ? 'badge-neutral' : pctClassElabore(r.pct)}">${r.status}</span></td>
+        <td class="det-col cell-trigger-detail" data-action="detail"><button class="btn-elabore-detail btn-det" type="button" data-cod="${escapeHtml(r.cod)}" aria-label="Ver detalhes de ${escapeHtml(r.produtor)}">Ver detalhes ›</button></td>
+        ${BLOCOS_ELABORE.map(([bk, , bt], i) => `<td class="blk ${i === 0 ? 'first-blk' : ''}">${icon(r[bk], bt)}</td>`).join('')}
+      </tr>`).join('') : `<tr><td colspan="16" class="el-empty">Nenhum produtor com esses filtros.</td></tr>`;
+    }
+
+    const footEl = el('elFoot');
+    if (footEl) {
+      const cads = list.filter((r) => r.cad === 'SIM');
+      const media = cads.length ? Math.round(cads.reduce((s, r) => s + r.pct, 0) / cads.length) : 0;
+      footEl.innerHTML = `<tr>
+        <td colspan="5" class="col-left">Preenchimento entre ${cads.length.toLocaleString('pt-BR')} cadastrados</td>
+        <td class="col-center">${list.length ? Math.round(cads.length / list.length * 100) : 0}%</td>
+        <td class="col-center"><div class="pct">média ${media}%</div></td>
+        <td class="det-col"></td>
+        ${BLOCOS_ELABORE.map(([bk], i) => {
+          const p = cads.length ? Math.round(cads.filter((r) => r[bk] === 'SIM').length / cads.length * 100) : 0;
+          return `<td class="blk ${i === 0 ? 'first-blk' : ''}"><div class="pct"><span>${p}%</span><span class="pct-bar"><i style="width:${p}%"></i></span></div></td>`;
+        }).join('')}
+      </tr>`;
+    }
+
+    const pagEl = el('elPagination');
+    if (pagEl) {
+      const nums = [];
+      for (let p = 1; p <= pages; p++) if (p === 1 || p === pages || Math.abs(p - elaboreState.page) <= 1) nums.push(p); else if (nums.at(-1) !== '…') nums.push('…');
+      const btn = (p, label, dis, on) => `<button type="button" class="pagination-btn ${on ? 'active' : ''}" data-page="${p}" ${dis ? 'disabled' : ''}>${label}</button>`;
+      pagEl.innerHTML = `
+        <div class="pagination-info"><span>${list.length ? `Exibindo <strong>${start + 1}–${Math.min(start + slice.length, list.length)}</strong> de <strong>${list.length.toLocaleString('pt-BR')}</strong> registros` : '0 registros'}</span></div>
+        <div class="pagination-controls">
+          <div class="pagination-size-wrap"><label for="elSize">Exibir:</label>
+            <select id="elSize" class="pagination-size-select">${[10, 25, 50, 100, 0].map((n) => `<option value="${n}" ${n === elaboreState.size ? 'selected' : ''}>${n || 'Todos'}</option>`).join('')}</select></div>
+          ${pages > 1 ? `<div class="pagination-nav">${btn(1, '«', elaboreState.page === 1)}${btn(elaboreState.page - 1, '‹', elaboreState.page === 1)}${nums.map((p) => p === '…' ? '<span class="pagination-ellipsis">…</span>' : btn(p, p, false, p === elaboreState.page)).join('')}${btn(elaboreState.page + 1, '›', elaboreState.page === pages)}${btn(pages, '»', elaboreState.page === pages)}</div>` : ''}
+        </div>`;
+    }
+  }
+
+  function openElabore(cod) {
+    elaboreState.filtros = {}; elaboreState.grupo = 'todos'; elaboreState.page = 1;
+    const filtersContainer = el('elFilters');
+    if (filtersContainer) {
+      filtersContainer.querySelectorAll('.table-col-filter').forEach((f) => { f.value = ''; });
+    }
+    if (cod) {
+      elaboreState.filtros.cod = cod;
+      const codFilter = filtersContainer?.querySelector('[data-col="cod"]');
+      if (codFilter) codFilter.value = cod;
+    }
+    const panel = el('panelElabore');
+    const backdrop = el('panelFsBackdrop');
+    if (panel) panel.classList.add('is-fullscreen');
+    if (backdrop) {
+      backdrop.hidden = false;
+      backdrop.removeAttribute('hidden');
+    }
+    const refMonth = state.consistency?.refMonth || state.overview?.refMonth || '';
+    if (el('elRef')) el('elRef').textContent = refMonth ? String(refMonth).slice(0, 7).split('-').reverse().join('/') : '--/----';
+    renderElaboreHead();
+    renderElaborePanel();
+  }
+
+  function closeElabore() {
+    const panel = el('panelElabore');
+    const backdrop = el('panelFsBackdrop');
+    if (panel) panel.classList.remove('is-fullscreen');
+    if (backdrop) {
+      backdrop.hidden = true;
+      backdrop.setAttribute('hidden', '');
+    }
+  }
+
+  function openDetailElaboreModal(cod) {
+    const rows = getElaboreRows();
+    const r = rows.find((x) => x.cod === cod);
+    if (!r) return;
+    const semCad = r.cad === 'NÃO';
+    const dadosBadge = `<span class="badge ${semCad ? 'badge-neutral' : pctClassElabore(r.pct)}">${r.status}</span>`;
+    const situacao = (v) => v === 'SIM'
+      ? '<span class="material-symbols-rounded ic ic-ok">check_circle</span> Possui'
+      : v === 'NÃO'
+      ? '<span class="material-symbols-rounded ic ic-no">cancel</span> Não possui'
+      : '<span class="material-symbols-rounded ic ic-na">remove</span> Sem cadastro';
+
+    if (el('detTitle')) el('detTitle').textContent = `Detalhes Elabore · ${r.produtor}`;
+    const refMonth = state.consistency?.refMonth || state.overview?.refMonth || '';
+    if (el('detRef')) el('detRef').textContent = refMonth ? String(refMonth).slice(0, 7).split('-').reverse().join('/') : '--/----';
+
+    if (el('detBody')) {
+      el('detBody').innerHTML = `
+        <p class="det-sec">Fazenda / Produtor</p>
+        <table class="data-table det-ficha"><tbody>
+          <tr><th>ID</th><td><strong>${escapeHtml(r.cod)}</strong></td><th>Projeto</th><td>${escapeHtml(r.projeto)}</td></tr>
+          <tr><th>Produtor(a)</th><td colspan="3">${escapeHtml(r.produtor)}</td></tr>
+          <tr><th>Consultor(a)</th><td colspan="3">${escapeHtml(r.consultor)}</td></tr>
+          <tr><th>Última referência</th><td>${escapeHtml(r.data)}</td><th>Cadastro Elabore</th><td><span class="badge ${semCad ? 'badge-neutral' : 'badge-positive'}">${r.cad}</span></td></tr>
+          <tr><th>Dados Elabore</th><td colspan="3">${dadosBadge}</td></tr>
+        </tbody></table>
+        <p class="det-sec">Blocos gerenciais do Elabore</p>
+        <table class="data-table det-blocos">
+          <thead><tr><th class="col-center">#</th><th>Bloco</th><th>O que cobre</th><th>Situação</th></tr></thead>
+          <tbody>${BLOCOS_ELABORE.map(([k, , nome, desc], i) => `<tr class="det-${r[k] === 'SIM' ? 'ok' : r[k] === 'NÃO' ? 'no' : 'na'}">
+            <td class="col-center">${i + 1}</td><td><strong>${nome}</strong></td><td>${desc}</td><td>${situacao(r[k])}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="3">${semCad ? 'Produtor sem cadastro no Elabore' : 'Blocos preenchidos'}</td>
+            <td>${semCad ? '—' : `${r.n} de 8 (${r.pct}%)`}</td></tr></tfoot>
+        </table>`;
+    }
+    const modalDet = el('modalDet');
+    if (modalDet) modalDet.classList.add('active');
+  }
+
+  function closeDetailElaboreModal() {
+    const modalDet = el('modalDet');
+    if (modalDet) modalDet.classList.remove('active');
+  }
+
+  el('elChips')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-g]');
+    if (b) {
+      elaboreState.grupo = b.dataset.g;
+      elaboreState.page = 1;
+      renderElaborePanel();
+    }
+  });
+
+  el('elHead')?.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-key]');
+    if (!th) return;
+    const k = th.dataset.key;
+    elaboreState.sort = { k, dir: elaboreState.sort.k === k ? -elaboreState.sort.dir : 1 };
+    renderElaborePanel();
+  });
+
+  el('elFilters')?.addEventListener('input', (e) => {
+    const col = e.target.dataset.col;
+    if (col) {
+      elaboreState.filtros[col] = e.target.value;
+      elaboreState.page = 1;
+      renderElaborePanel();
+    }
+  });
+  el('elFilters')?.addEventListener('change', (e) => {
+    const col = e.target.dataset.col;
+    if (col && e.target.tagName === 'SELECT') {
+      elaboreState.filtros[col] = e.target.value;
+      elaboreState.page = 1;
+      renderElaborePanel();
+    }
+  });
+
+  el('elPagination')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-page]');
+    if (b && !b.disabled) {
+      elaboreState.page = +b.dataset.page;
+      renderElaborePanel();
+    }
+  });
+
+  el('elPagination')?.addEventListener('change', (e) => {
+    if (e.target.id === 'elSize') {
+      elaboreState.size = +e.target.value;
+      elaboreState.page = 1;
+      renderElaborePanel();
+    }
+  });
+
+  el('btnExportElabore')?.addEventListener('click', () => {
+    const head = ['ID', 'Consultor', 'Produtor', 'Projeto', 'Ult. referencia', 'Cadastro Elabore', 'Dados Elabore', ...BLOCOS_ELABORE.map(([, , t]) => t)];
+    const body = filteredElaboreRows(false).map((r) => [r.cod, r.consultor, r.produtor, r.projeto, r.data, r.cad, r.status, ...BLOCOS_ELABORE.map(([k]) => r[k])]);
+    const csv = '\ufeff' + [head, ...body].map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+      download: `dados_elabore_${state.consistency?.refMonth || 'export'}.csv`
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  el('elBody')?.addEventListener('click', (e) => {
+    const triggerCell = e.target.closest('[data-action="detail"]');
+    if (triggerCell) {
+      const tr = triggerCell.closest('tr[data-cod]');
+      if (tr && tr.dataset.cod) {
+        openDetailElaboreModal(tr.dataset.cod);
+      }
+    }
+  });
+
+  ['btnDetClose', 'btnDetOk'].forEach((id) => el(id)?.addEventListener('click', closeDetailElaboreModal));
+  el('modalDet')?.addEventListener('click', (e) => {
+    if (e.target === el('modalDet')) closeDetailElaboreModal();
+  });
+  ['btnCloseElabore', 'btnFsElabore'].forEach((id) => el(id)?.addEventListener('click', closeElabore));
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-elabore-detail');
     if (btn) {
       e.preventDefault();
-      const lr = btn.dataset.lr;
-      if (lr) abrirModalDetalhesElabore(lr);
+      const lr = btn.dataset.lr || btn.dataset.cod;
+      if (lr) openDetailElaboreModal(lr);
     }
   });
 
-  function fecharModalElabore() {
-    const overlay = el('modalElaboreOverlay');
-    if (overlay) {
-      overlay.classList.remove('active');
-      overlay.setAttribute('aria-hidden', 'true');
-    }
-  }
-
-  el('btnCloseElaboreModal')?.addEventListener('click', fecharModalElabore);
-  el('btnOkElaboreModal')?.addEventListener('click', fecharModalElabore);
-  el('modalElaboreOverlay')?.addEventListener('click', (e) => {
-    if (e.target === el('modalElaboreOverlay')) {
-      fecharModalElabore();
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const modalDet = el('modalDet');
+    if (modalDet && modalDet.classList.contains('active')) {
+      closeDetailElaboreModal();
+    } else {
+      closeElabore();
     }
   });
+
   setupExportButtons();
   setupChartHorizonControls();
   setupPanelFullscreen();
@@ -2904,5 +3172,5 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAllData();
   setInterval(loadAllData, 300000);
 
-  window.dashboard = { carousel, charts, state, reload: loadAllData };
+  window.dashboard = { carousel, charts, state, reload: loadAllData, openElabore };
 });

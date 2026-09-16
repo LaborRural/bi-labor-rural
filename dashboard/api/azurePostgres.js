@@ -547,4 +547,155 @@ async function getElaboreCadastradosSet(supabase, fetchAll) {
   }, 10 * 60 * 1000);
 }
 
-module.exports = { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, fixMojibake, getProdutoresAtivos, getElaboreCadastradosSet };
+/**
+ * Consulta as 8 Views do PostgreSQL (analytics_mart) para apurar os blocos gerenciais do Elabore:
+ * - vw_revenue (receita e qualidade)
+ * - vw_feeding (alimentação)
+ * - vw_area_land_summary (área)
+ * - vw_cattle (rebanho)
+ * - vw_labor (mão de obra)
+ * - vw_expense (energia e outras despesas)
+ */
+async function getElaboreBlocksFromPostgres(refMonth = null) {
+  const cacheKey = `ELABORE_BLOCKS_PG_${refMonth || 'CURRENT'}`;
+  return fetchWithCache(cacheKey, async () => {
+    const blocksMap = new Map();
+    if (!process.env.PG_HOST || !process.env.PG_USER || !process.env.PG_PASSWORD) {
+      return blocksMap;
+    }
+
+    const refPattern = refMonth ? `${String(refMonth).slice(0, 7)}%` : `${new Date().toISOString().slice(0, 7)}%`;
+
+    function getEntry(cod) {
+      const c = String(cod).trim().toUpperCase();
+      if (!blocksMap.has(c)) {
+        blocksMap.set(c, {
+          receita: false,
+          qualidade: false,
+          alimentacao: false,
+          area: false,
+          rebanho: false,
+          mdo: false,
+          energia: false,
+          despesas: false
+        });
+      }
+      return blocksMap.get(c);
+    }
+
+    let client = null;
+    try {
+      client = new Client({
+        host: process.env.PG_HOST,
+        port: Number(process.env.PG_PORT || 5432),
+        database: process.env.PG_DATABASE || 'postgres',
+        user: process.env.PG_USER,
+        password: process.env.PG_PASSWORD,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 5000
+      });
+      await client.connect();
+
+      // 1. Receita e Qualidade (vw_revenue)
+      const resRev = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(r.milk_sold_revenue, 0) > 0 OR COALESCE(r.milk_volume_sold, 0) > 0 OR COALESCE(r.other_revenues, 0) > 0 OR COALESCE(r.animal_sale, 0) > 0) AS has_rec,
+               (r.ccs IS NOT NULL OR r.cpp IS NOT NULL OR r.fat IS NOT NULL OR r.protein IS NOT NULL) AS has_qual
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_revenue r ON r.id_property = p.id_property
+        WHERE r.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resRev.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_rec) e.receita = true;
+        if (r.has_qual) e.qualidade = true;
+      });
+
+      // 2. Alimentação (vw_feeding)
+      const resFeed = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(f.voluminous_consumed_quantity, 0) > 0 OR COALESCE(f.concentrate_consumed_quantity, 0) > 0 OR COALESCE(f.mineral_consumed_quantity, 0) > 0 OR COALESCE(f.voluminous_amount_total, 0) > 0 OR COALESCE(f.concentrate_amount_total, 0) > 0) AS has_alim
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_feeding f ON f.id_property = p.id_property
+        WHERE f.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resFeed.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_alim) e.alimentacao = true;
+      });
+
+      // 3. Área (vw_area_land_summary)
+      const resArea = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(a.hectares_owned_forrageiras, 0) > 0 OR COALESCE(a.hectares_rented_forrageiras, 0) > 0 OR COALESCE(a.hectares_owned_app_reserva_legal, 0) > 0 OR COALESCE(a.hectares_owned_benfeitorias_estradas, 0) > 0) AS has_area
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_area_land_summary a ON a.id_property = p.id_property
+        WHERE a.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resArea.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_area) e.area = true;
+      });
+
+      // 4. Rebanho (vw_cattle)
+      const resCattle = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(c.total_cows, 0) > 0 OR COALESCE(c.total_cattle, 0) > 0 OR COALESCE(c.lactating_cows, 0) > 0 OR COALESCE(c.dry_cows, 0) > 0) AS has_cat
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_cattle c ON c.id_property = p.id_property
+        WHERE c.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resCattle.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_cat) e.rebanho = true;
+      });
+
+      // 5. Mão de Obra (vw_labor)
+      const resLabor = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(l.family_labor_quantity, 0) > 0 OR COALESCE(l.hired_labor_quantity, 0) > 0 OR COALESCE(l.family_labor_expenses, 0) > 0 OR COALESCE(l.hired_labor_expenses, 0) > 0) AS has_mdo
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_labor l ON l.id_property = p.id_property
+        WHERE l.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resLabor.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_mdo) e.mdo = true;
+      });
+
+      // 6. Energia e Despesas (vw_expense)
+      const resExp = await client.query(`
+        SELECT p.labor_rural_code,
+               (COALESCE(e.energy, 0) > 0 OR COALESCE(e.fuel, 0) > 0) AS has_ene,
+               (COALESCE(e.general_expenses, 0) > 0 OR COALESCE(e.administration, 0) > 0 OR COALESCE(e.land_lease, 0) > 0 OR COALESCE(e.technical_assistance, 0) > 0 OR COALESCE(e.repairs, 0) > 0 OR COALESCE(e.medicines_vaccines, 0) > 0 OR COALESCE(e.reproduction, 0) > 0 OR COALESCE(e.milking_material, 0) > 0) AS has_desp
+        FROM analytics_mart.vw_dim_property p
+        JOIN analytics_mart.vw_expense e ON e.id_property = p.id_property
+        WHERE e.reference_month::text LIKE $1 AND p.labor_rural_code IS NOT NULL;
+      `, [refPattern]);
+      (resExp.rows || []).forEach(r => {
+        const e = getEntry(r.labor_rural_code);
+        if (r.has_ene) e.energia = true;
+        if (r.has_desp) e.despesas = true;
+      });
+
+      await client.end();
+    } catch (err) {
+      console.warn('⚠️ Erro ao consultar blocos nas Views do PostgreSQL:', err.message);
+      if (client) {
+        try { await client.end(); } catch (_) {}
+      }
+    }
+
+    return blocksMap;
+  }, 5 * 60 * 1000);
+}
+
+module.exports = {
+  getRegiaoMap,
+  getDimRegioesMap,
+  sanitizeRegiao,
+  fixMojibake,
+  getProdutoresAtivos,
+  getElaboreCadastradosSet,
+  getElaboreBlocksFromPostgres
+};

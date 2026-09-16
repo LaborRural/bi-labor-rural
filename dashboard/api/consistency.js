@@ -25,7 +25,7 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const supabase = getSupabaseClient();
-    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos } = require('./azurePostgres');
+    const { getRegiaoMap, getDimRegioesMap, sanitizeRegiao, getProdutoresAtivos, getElaboreBlocksFromPostgres } = require('./azurePostgres');
     const [regiaoMap, dimRegioesData] = await Promise.all([
       getRegiaoMap(supabase, fetchAll),
       getDimRegioesMap(supabase).catch(() => ({ deParaMap: new Map() }))
@@ -97,7 +97,7 @@ module.exports = async (req, res) => {
       return true;
     }
 
-    const [consistenciaHistoricaBruta, produtoresAtivosBrutos, vinculosFallback, consistenciaMensalBruta, consistenciaAnualBruta] = await Promise.all([
+    const [consistenciaHistoricaBruta, produtoresAtivosBrutos, vinculosFallback, consistenciaMensalBruta, consistenciaAnualBruta, elaboreBlocksMap] = await Promise.all([
       fetchWithCache('CONSIST_FATO_HIST', () =>
         fetchAll(() => supabase
           .from('sq_fato_consistencia')
@@ -160,7 +160,8 @@ module.exports = async (req, res) => {
           seen.add(k);
           return true;
         });
-      })
+      }),
+      getElaboreBlocksFromPostgres(refMonth).catch(() => new Map())
     ]);
 
     const fallbackMetaMap = new Map((vinculosFallback || []).map(v => [v.codigo_lr, v]));
@@ -353,8 +354,39 @@ module.exports = async (req, res) => {
 
       const isCad = c?.excecao !== 1 && c?.excecao !== true;
       const cadLabel = isCad ? 'SIM' : 'NÃO';
-      const dadosPct = possuiDados ? 100 : 0;
-      const dadosStatus = possuiDados ? 'SIM (100%)' : 'NÃO (0%)';
+
+      const defaultBlocks = {
+        receita: false,
+        qualidade: false,
+        alimentacao: false,
+        area: false,
+        rebanho: false,
+        mdo: false,
+        energia_combustivel: false,
+        despesas: false
+      };
+      const pgBlocks = elaboreBlocksMap?.get(cdLrUpper);
+      let detalhesBlocos = defaultBlocks;
+      if (pgBlocks) {
+        detalhesBlocos = pgBlocks;
+      } else if (!elaboreBlocksMap || elaboreBlocksMap.size === 0) {
+        if (possuiDados) {
+          detalhesBlocos = {
+            receita: true,
+            qualidade: true,
+            alimentacao: true,
+            area: true,
+            rebanho: true,
+            mdo: true,
+            energia_combustivel: true,
+            despesas: true
+          };
+        }
+      }
+      const nBlocks = Object.values(detalhesBlocos).filter(Boolean).length;
+      const dadosPct = Math.round((nBlocks / 8) * 100);
+      const temDado = nBlocks > 0;
+      const dadosStatus = temDado ? `SIM (${dadosPct}%)` : 'NÃO (0%)';
 
       return {
         codigo_lr: p.codigo_lr || '-',
@@ -364,12 +396,13 @@ module.exports = async (req, res) => {
         regiao: getRegiao(p.codigo_lr, p.unidade_atendimento || metaFallback?.unidade_atendimento, p.projeto || metaFallback?.projeto || c?.projeto),
         projeto: p.projeto || metaFallback?.projeto || c?.projeto || 'NÃO INFORMADO',
         mes_referencia: mesRefVal,
-        possui_dados: possuiDados,
+        possui_dados: temDado,
         cadastro_elabore: isCad,
         cadastro_elabore_label: cadLabel,
         dados_elabore_pct: dadosPct,
         dados_elabore_status: dadosStatus,
-        dados_elabore_tem_dado: possuiDados,
+        dados_elabore_tem_dado: temDado,
+        detalhes_blocos: detalhesBlocos,
         referencia: mesRefVal ? new Date(`${String(mesRefVal).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-',
         status: 'ATIVO'
       };
@@ -397,8 +430,39 @@ module.exports = async (req, res) => {
 
       const isCad = c.excecao !== 1 && c.excecao !== true;
       const cadLabel = isCad ? 'SIM' : 'NÃO';
-      const dadosPct = possuiDados ? 100 : 0;
-      const dadosStatus = possuiDados ? 'SIM (100%)' : 'NÃO (0%)';
+
+      const defaultBlocks = {
+        receita: false,
+        qualidade: false,
+        alimentacao: false,
+        area: false,
+        rebanho: false,
+        mdo: false,
+        energia_combustivel: false,
+        despesas: false
+      };
+      const pgBlocks = elaboreBlocksMap?.get(cdLrUpper);
+      let detalhesBlocos = defaultBlocks;
+      if (pgBlocks) {
+        detalhesBlocos = pgBlocks;
+      } else if (!elaboreBlocksMap || elaboreBlocksMap.size === 0) {
+        if (possuiDados) {
+          detalhesBlocos = {
+            receita: true,
+            qualidade: true,
+            alimentacao: true,
+            area: true,
+            rebanho: true,
+            mdo: true,
+            energia_combustivel: true,
+            despesas: true
+          };
+        }
+      }
+      const nBlocks = Object.values(detalhesBlocos).filter(Boolean).length;
+      const dadosPct = Math.round((nBlocks / 8) * 100);
+      const temDado = nBlocks > 0;
+      const dadosStatus = temDado ? `SIM (${dadosPct}%)` : 'NÃO (0%)';
 
       tabelaProdutoresComDados.push({
         codigo_lr: c.codigo_lr || '-',
@@ -408,12 +472,13 @@ module.exports = async (req, res) => {
         regiao: getRegiao(c.codigo_lr, produtor?.unidade_atendimento || metaFallback?.unidade_atendimento, produtor?.projeto || metaFallback?.projeto || c.projeto),
         projeto: c.projeto || produtor?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
         mes_referencia: c.mes_referencia || refMonth,
-        possui_dados: possuiDados,
+        possui_dados: temDado,
         cadastro_elabore: isCad,
         cadastro_elabore_label: cadLabel,
         dados_elabore_pct: dadosPct,
         dados_elabore_status: dadosStatus,
-        dados_elabore_tem_dado: possuiDados,
+        dados_elabore_tem_dado: temDado,
+        detalhes_blocos: detalhesBlocos,
         referencia: c.mes_referencia ? new Date(`${String(c.mes_referencia).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-',
         status: 'INATIVO'
       });
