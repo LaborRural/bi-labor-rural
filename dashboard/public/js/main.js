@@ -2192,23 +2192,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function getActiveReferenceMonthDisplay() {
+  function shiftMonthMinus1(monthStr) {
+    if (!monthStr) return null;
+    const d = new Date(`${String(monthStr).slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setMonth(d.getMonth() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
+  function getActiveReferenceMonthDisplay(isElabore = false) {
     const select = el('filterMonth');
-    if (select && select.value && select.selectedIndex >= 0) {
-      const opt = select.options[select.selectedIndex];
-      if (opt && opt.value) {
-        return opt.text;
-      }
+    let monthValue = (select && select.value) ? select.value : (state.overview?.refMonth || state.visits?.refMonth || '2026-08-01');
+
+    if (isElabore && monthValue) {
+      const shifted = shiftMonthMinus1(monthValue);
+      if (shifted) monthValue = shifted;
     }
-    const rawRef = state.overview?.refMonth || state.visits?.refMonth || '2026-08-01';
-    if (rawRef) {
-      const parsed = new Date(`${String(rawRef).slice(0, 10)}T12:00:00`);
+
+    if (monthValue) {
+      const parsed = new Date(`${String(monthValue).slice(0, 10)}T12:00:00`);
       if (!Number.isNaN(parsed.getTime())) {
         return parsed.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^./, (c) => c.toUpperCase());
       }
-      return String(rawRef).slice(0, 7);
+      return String(monthValue).slice(0, 7);
     }
-    return 'Agosto de 2026';
+    return isElabore ? 'Julho de 2026' : 'Agosto de 2026';
   }
 
   function setupKpiInfoPopovers() {
@@ -2216,6 +2224,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const popoverTitle = el('kpiPopoverTitle');
     const popoverBody = el('kpiPopoverBody');
     const popoverRefBox = el('kpiPopoverRefBox');
+    const popoverRefLabel = el('kpiPopoverRefLabel');
     const popoverRefVal = el('kpiPopoverRefVal');
     if (!popover || !popoverTitle || !popoverBody) return;
 
@@ -2224,13 +2233,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function showPopover(btn) {
       const title = btn.dataset.infoTitle || 'Informação do Indicador';
       const body = btn.dataset.infoBody || '';
-      const refMonthDisplay = btn.dataset.infoRef || getActiveReferenceMonthDisplay();
+      const isElabore = btn.dataset.infoRefType === 'mes_elabore' || title.toLowerCase().includes('elabore');
+      const refMonthDisplay = btn.dataset.infoRef || getActiveReferenceMonthDisplay(isElabore);
 
       popoverTitle.textContent = title;
       popoverBody.textContent = body;
 
       if (popoverRefBox && popoverRefVal) {
         if (refMonthDisplay) {
+          if (popoverRefLabel) {
+            popoverRefLabel.textContent = 'Mês de referência:';
+          }
           popoverRefVal.textContent = refMonthDisplay;
           popoverRefBox.style.display = 'flex';
         } else {

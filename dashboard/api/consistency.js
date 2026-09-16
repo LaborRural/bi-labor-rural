@@ -111,35 +111,72 @@ module.exports = async (req, res) => {
           .from('sq_raw_vinculos')
           .select('codigo_lr, nome_produtor, projeto, unidade_atendimento')).catch(() => [])
       ),
-      fetchWithCache(`CONSIST_RAW_MENSAL_${refMonth || 'ALL'}`, () =>
-        fetchAll(() => {
-          let q = supabase
+      fetchWithCache(`CONSIST_RAW_MENSAL_${refMonth || 'ALL'}`, async () => {
+        if (!refMonth) {
+          return await fetchAll(() => supabase
             .from('sq_raw_consistencia_mensal')
-            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_mensal, detalhamento_inconsistencia');
-          if (refMonth) q = q.or(`mes_elabore.eq.${refMonth},mes_referencia.eq.${refMonth}`);
-          return q.order('mes_referencia', { ascending: false });
-        }).catch(() => [])
-      ),
-      fetchWithCache(`CONSIST_RAW_ANUAL_${refMonth || 'ALL'}`, () =>
-        fetchAll(() => {
-          let q = supabase
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_mensal, detalhamento_inconsistencia')
+            .order('mes_referencia', { ascending: false })).catch(() => []);
+        }
+        const [byElab, byRef] = await Promise.all([
+          fetchAll(() => supabase
+            .from('sq_raw_consistencia_mensal')
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_mensal, detalhamento_inconsistencia')
+            .eq('mes_elabore', refMonth)).catch(() => []),
+          fetchAll(() => supabase
+            .from('sq_raw_consistencia_mensal')
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_mensal, detalhamento_inconsistencia')
+            .eq('mes_referencia', refMonth)).catch(() => [])
+        ]);
+        const seen = new Set();
+        return [...byElab, ...byRef].filter(r => {
+          const k = `${r.codigo_lr}_${String(r.mes_referencia || '').slice(0, 7)}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      }),
+      fetchWithCache(`CONSIST_RAW_ANUAL_${refMonth || 'ALL'}`, async () => {
+        if (!refMonth) {
+          return await fetchAll(() => supabase
             .from('sq_raw_consistencia_anual')
-            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_anual, detalhamento_inconsistencia');
-          if (refMonth) q = q.or(`mes_elabore.eq.${refMonth},mes_referencia.eq.${refMonth}`);
-          return q.order('mes_referencia', { ascending: false });
-        }).catch(() => [])
-      )
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_anual, detalhamento_inconsistencia')
+            .order('mes_referencia', { ascending: false })).catch(() => []);
+        }
+        const [byElab, byRef] = await Promise.all([
+          fetchAll(() => supabase
+            .from('sq_raw_consistencia_anual')
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_anual, detalhamento_inconsistencia')
+            .eq('mes_elabore', refMonth)).catch(() => []),
+          fetchAll(() => supabase
+            .from('sq_raw_consistencia_anual')
+            .select('codigo_lr, mes_referencia, mes_elabore, consistencia_anual, detalhamento_inconsistencia')
+            .eq('mes_referencia', refMonth)).catch(() => [])
+        ]);
+        const seen = new Set();
+        return [...byElab, ...byRef].filter(r => {
+          const k = `${r.codigo_lr}_${String(r.mes_referencia || '').slice(0, 7)}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      })
     ]);
 
     const fallbackMetaMap = new Map((vinculosFallback || []).map(v => [v.codigo_lr, v]));
-    const mensalRefMap = new Map((consistenciaMensalBruta || []).map(m => [
-      `${String(m.codigo_lr).trim().toUpperCase()}_${String(m.mes_elabore || m.mes_referencia || '').slice(0, 7)}`,
-      m
-    ]));
-    const anualRefMap = new Map((consistenciaAnualBruta || []).map(a => [
-      `${String(a.codigo_lr).trim().toUpperCase()}_${String(a.mes_elabore || a.mes_referencia || '').slice(0, 7)}`,
-      a
-    ]));
+    const mensalRefMap = new Map();
+    (consistenciaMensalBruta || []).forEach(m => {
+      const cod = String(m.codigo_lr).trim().toUpperCase();
+      if (m.mes_elabore) mensalRefMap.set(`${cod}_${String(m.mes_elabore).slice(0, 7)}`, m);
+      if (m.mes_referencia) mensalRefMap.set(`${cod}_${String(m.mes_referencia).slice(0, 7)}`, m);
+    });
+
+    const anualRefMap = new Map();
+    (consistenciaAnualBruta || []).forEach(a => {
+      const cod = String(a.codigo_lr).trim().toUpperCase();
+      if (a.mes_elabore) anualRefMap.set(`${cod}_${String(a.mes_elabore).slice(0, 7)}`, a);
+      if (a.mes_referencia) anualRefMap.set(`${cod}_${String(a.mes_referencia).slice(0, 7)}`, a);
+    });
     const produtoresAtivos = (produtoresAtivosBrutos || []).filter(p => isValidoLeite(p.nome_consultor, p.projeto)).filter(rowMatches);
     const produtoresMap = new Map((produtoresAtivos || []).map(p => [p.codigo_lr, p]));
 
