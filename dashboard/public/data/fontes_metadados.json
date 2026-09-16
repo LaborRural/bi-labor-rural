@@ -1,8 +1,8 @@
 {
-  "timestamp_inspecao": "2026-09-16T11:04:13.339907-03:00",
-  "timestamp_etl": "2026-09-16T11:04:13.339907-03:00",
-  "ultima_execucao_etl_formatada": "16/09/2026 às 11:04:13",
-  "ultima_leitura_planilhas_formatada": "16/09/2026 às 11:04:13",
+  "timestamp_inspecao": "2026-09-16T11:33:05.369310-03:00",
+  "timestamp_etl": "2026-09-16T11:33:05.369310-03:00",
+  "ultima_execucao_etl_formatada": "16/09/2026 às 11:33:05",
+  "ultima_leitura_planilhas_formatada": "16/09/2026 às 11:33:05",
   "arquivo_mais_recente_nome": "LISTA_GERAL_RELATORIO_DE_GRUPO.xlsx",
   "arquivo_mais_recente_data": "16/09/2026 às 10:24",
   "total_arquivos": 12,

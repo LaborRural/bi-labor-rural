@@ -274,9 +274,9 @@ button { color: inherit; }
 .filter-control {
   position: relative;
   height: 35px;
-  min-width: 75px;
-  max-width: 125px;
-  flex: 1 1 0;
+  min-width: 105px;
+  max-width: 160px;
+  flex: 1.2 1 0;
   padding: 3px 8px;
   display: flex;
   flex-direction: column;
@@ -291,28 +291,29 @@ button { color: inherit; }
 
 .filter-control.filter-control--medium,
 .filter-control:has(#filterMonth) {
-  min-width: 130px;
-  max-width: 175px;
+  min-width: 135px;
+  max-width: 185px;
   flex: 1.4 1 0;
 }
 
 .filter-control.filter-control--medium .custom-select-popup,
 .filter-control:has(#filterMonth) .custom-select-popup {
-  min-width: 200px;
+  min-width: max(100%, 220px);
 }
 
 .filter-control.filter-control--wide,
 .filter-control:has(#filterConsultant),
 .filter-control:has(#filterProducer) {
-  min-width: 140px;
-  max-width: 210px;
-  flex: 1.75 1 0;
+  min-width: 160px;
+  max-width: 250px;
+  flex: 1.8 1 0;
 }
 
 .filter-control.filter-control--wide .custom-select-popup,
 .filter-control:has(#filterConsultant) .custom-select-popup,
 .filter-control:has(#filterProducer) .custom-select-popup {
-  min-width: 250px;
+  min-width: max(100%, 320px);
+  max-width: 520px;
 }
 
 .filter-control:hover {
@@ -369,9 +370,10 @@ button { color: inherit; }
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  right: 0;
-  min-width: 180px;
-  max-height: 280px;
+  width: max-content;
+  min-width: max(100%, 270px);
+  max-width: 450px;
+  max-height: 300px;
   z-index: 1000;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -392,7 +394,7 @@ button { color: inherit; }
   transform: translateY(0);
 }
 
-.filter-control:nth-child(n+5) .custom-select-popup {
+.filter-control:nth-child(n+4) .custom-select-popup {
   left: auto;
   right: 0;
 }
@@ -455,6 +457,12 @@ button { color: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.custom-select-option span:first-child {
+  white-space: nowrap;
 }
 
 .custom-select-option:hover,

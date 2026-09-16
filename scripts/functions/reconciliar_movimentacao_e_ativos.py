@@ -577,6 +577,31 @@ def executar_reconciliacao(reindex_completo: bool = False):
             return None
         return " / ".join(partes_limpas)
 
+    PROJETOS_OFICIAIS_VALIDOS = [
+        'ALVOAR ASSIST', 'ALVOAR ECO', 'ALVOAR ASSIST / ALVOAR ECO', 'ALVOAR ECO / MAIS GRAOS',
+        'ATEG_CCPR', 'CCPR', 'LPA', 'REGENERA', 'SEMEAR', 'COPRIL', 'CAMPILEITE', 'NESTLE', 'EDUCAMPO'
+    ]
+
+    def eh_puramente_cft(grupo_str, proj_str, nome_grupo_limpo):
+        g_up = str(grupo_str or "").strip().upper()
+        p_up = str(proj_str or "").strip().upper()
+        
+        # Se o projeto da fazenda contiver "CFT" (ex: CFT DANONE 2026, CFT LPA 2026, CFT PIRACANJUBA, QUILLAYES - CFT)
+        if "CFT" in p_up:
+            matches_g = re.findall(r'\((.*?)\)', g_up)
+            projs_g = [m.strip().upper() for m in matches_g if "CFT" not in m.upper()]
+            if not any(p_g in PROJETOS_OFICIAIS_VALIDOS for p_g in projs_g):
+                return True
+                
+        # Se o projeto for nulo, vazio, "CFT" ou "NONE"
+        if not p_up or p_up in ["NONE", "NAN", "CFT"]:
+            matches_g = re.findall(r'\((.*?)\)', g_up)
+            projs_g = [m.strip().upper() for m in matches_g if "CFT" not in m.upper()]
+            if not any(p_g in PROJETOS_OFICIAIS_VALIDOS for p_g in projs_g):
+                return True
+                
+        return False
+
     # Mapeamento oficial de Projeto -> Agroindústria e mapa de regiões
     MAP_PROJETO_AGRO = {
         "REGENERA": "Nestlé",
@@ -965,13 +990,10 @@ def executar_reconciliacao(reindex_completo: bool = False):
             # Debug para rastreamento de João Pedro Sillos Damitto Tinoco
             is_jp = "JOAO PEDRO" in str(grupo_efetivo).upper() or "JOÃO PEDRO" in str(grupo_efetivo).upper() or "SILLOS" in str(grupo_efetivo).upper()
 
-            # 0.1 Se o grupo/projeto for EXCLUSIVAMENTE CFT (sem nenhum consultor ou projeto oficial vinculado), NÃO sobe para a dimensão analítica
+            # 0.1 Se a fazenda for PURAMENTE CFT (sem nenhum projeto nem consultor de consultoria oficial vinculado), NÃO sobe para a dimensão analítica
             proj_val = str(r.get("projeto") or "")
-            if proj_val and proj_val.upper() == "CFT":
-                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por projeto exclusivo CFT")
-                continue
-            if not proj_val and "CFT" in grupo_efetivo.upper() and not nome_grupo_efetivo:
-                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por grupo exclusivo CFT sem consultor oficial ({grupo_efetivo})")
+            if eh_puramente_cft(grupo_efetivo, proj_val, nome_grupo_efetivo):
+                if is_jp: print(f"   [DEBUG JP {ref_m}] {c} descartado por ser puramente CFT ({grupo_efetivo})")
                 continue
 
             # 0.2 Status do Consultor: Se todos os consultores do grupo estiverem inativos
