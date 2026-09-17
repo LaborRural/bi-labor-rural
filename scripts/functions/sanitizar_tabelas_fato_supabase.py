@@ -34,7 +34,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def detectar_raiz(caminho_base: Path | None = None) -> Path:
     """Localiza a raiz do projeto de forma robusta."""
-    caminho_atual = (caminho_base or Path.cwd()).resolve()
+    caminho_atual = (caminho_base or Path(__file__).resolve()).parent
     for candidato in [caminho_atual, *caminho_atual.parents]:
         if (candidato / "scripts").is_dir() and ((candidato / "db").is_dir() or (candidato / "dashboard").is_dir()):
             return candidato
@@ -43,14 +43,26 @@ def detectar_raiz(caminho_base: Path | None = None) -> Path:
     return caminho_atual
 
 
-def obter_cliente_supabase(raiz_projeto: Path) -> Client:
+raiz_projeto = detectar_raiz()
+for p in [
+    raiz_projeto,
+    raiz_projeto / "scripts",
+    raiz_projeto / "scripts" / "functions",
+    raiz_projeto / "SCRIPTS",
+    raiz_projeto / "SCRIPTS" / "FUNCTIONS",
+]:
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+
+def obter_cliente_supabase(raiz: Path) -> Client:
     """Inicializa cliente do Supabase."""
     for env_path in [
-        raiz_projeto / "scripts" / "config" / ".env",
-        raiz_projeto / "dashboard" / ".env.local",
-        raiz_projeto / "SCRIPTS" / "CONFIG" / ".env",
-        raiz_projeto / "DASHBOARD" / ".env.local",
-        raiz_projeto / ".env",
+        raiz / "scripts" / "config" / ".env",
+        raiz / "dashboard" / ".env.local",
+        raiz / "SCRIPTS" / "CONFIG" / ".env",
+        raiz / "DASHBOARD" / ".env.local",
+        raiz / ".env",
     ]:
         if env_path.is_file():
             load_dotenv(env_path)
@@ -156,7 +168,6 @@ def sanitizar_fato_consistencia(supabase: Client, modo_execucao: str = "dry_run"
         total_removidos = 0
         for m in meses_afetados:
             try:
-                # Filtrar válidos para o mês
                 validos_m = [
                     r for r in fato_rows
                     if str(r.get("mes_referencia"))[:10] == m and (r.get("codigo_lr", "").strip(), m) in chaves_validas
@@ -169,15 +180,12 @@ def sanitizar_fato_consistencia(supabase: Client, modo_execucao: str = "dry_run"
                 else:
                     records_validos = []
 
-                # Deletar mês completo no Supabase
                 supabase.table("sq_fato_consistencia").delete().gte("mes_referencia", m).lte("mes_referencia", f"{m}T23:59:59").execute()
                 
-                # Re-inserir registros válidos sanitizados
                 if records_validos:
                     chunk_size = 1000
                     for i in range(0, len(records_validos), chunk_size):
                         chunk = records_validos[i : i + chunk_size]
-                        # Limpar campos internos
                         for c_item in chunk:
                             c_item.pop("codigo_lr_clean", None)
                             c_item.pop("mes_ref_clean", None)

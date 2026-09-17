@@ -7,7 +7,7 @@ Objetivo: Atualizar exclusivamente as tabelas de consistência do projeto:
   3. sq_fato_consistencia       (processamento, carência de vínculos e carga da fato analítica)
 
 Uso:
-  python scripts/atualizar_consistencia_completa.py
+  python scripts/functions/atualizar_consistencia_completa.py
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def detectar_raiz(caminho_base: Path | None = None) -> Path:
     """Localiza a raiz do projeto de forma robusta."""
-    caminho_atual = (caminho_base or Path.cwd()).resolve()
+    caminho_atual = (caminho_base or Path(__file__).resolve()).parent
     for candidato in [caminho_atual, *caminho_atual.parents]:
         if (candidato / "scripts").is_dir() and ((candidato / "db").is_dir() or (candidato / "dashboard").is_dir()):
             return candidato
@@ -41,25 +41,37 @@ def detectar_raiz(caminho_base: Path | None = None) -> Path:
     return caminho_atual
 
 
-def carregar_configuracao(raiz_projeto: Path) -> dict:
+raiz_projeto = detectar_raiz()
+for p in [
+    raiz_projeto,
+    raiz_projeto / "scripts",
+    raiz_projeto / "scripts" / "functions",
+    raiz_projeto / "SCRIPTS",
+    raiz_projeto / "SCRIPTS" / "FUNCTIONS",
+]:
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+
+def carregar_configuracao(raiz: Path) -> dict:
     """Carrega o config.yaml oficial."""
-    config_file = raiz_projeto / "scripts" / "config" / "config.yaml"
+    config_file = raiz / "scripts" / "config" / "config.yaml"
     if not config_file.is_file():
-        config_file = raiz_projeto / "SCRIPTS" / "CONFIG" / "config.yaml"
+        config_file = raiz / "SCRIPTS" / "CONFIG" / "config.yaml"
     if not config_file.is_file():
         raise FileNotFoundError(f"❌ Arquivo de configuração não encontrado: {config_file}")
     with open(config_file, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def obter_cliente_supabase(raiz_projeto: Path):
+def obter_cliente_supabase(raiz: Path):
     """Inicializa cliente do Supabase."""
     for env_path in [
-        raiz_projeto / "scripts" / "config" / ".env",
-        raiz_projeto / "dashboard" / ".env.local",
-        raiz_projeto / "SCRIPTS" / "CONFIG" / ".env",
-        raiz_projeto / "DASHBOARD" / ".env.local",
-        raiz_projeto / ".env",
+        raiz / "scripts" / "config" / ".env",
+        raiz / "dashboard" / ".env.local",
+        raiz / "SCRIPTS" / "CONFIG" / ".env",
+        raiz / "DASHBOARD" / ".env.local",
+        raiz / ".env",
     ]:
         if env_path.is_file():
             load_dotenv(env_path)
@@ -112,7 +124,7 @@ def buscar_todos_registros(supabase, tabela: str, select_cols: str = "*", filtro
     return todos_registros
 
 
-def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict):
+def processar_carga_fato_consistencia(supabase, raiz: Path, config: dict):
     """Executa a geração e o upsert da tabela sq_fato_consistencia."""
     print("\n" + "=" * 70)
     print("🚀 PROCESSANDO TABELA FATO: sq_fato_consistencia")
@@ -247,10 +259,8 @@ def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict
         print("❌ Sem dados mensais para processar a fato.")
         return False
 
-    # Incluir nome_consultor da raw mensal (para usar como fallback)
     cols_consist_raw = [c for c in ["codigo_lr", "mes_referencia", "mes_elabore", "consistencia_mensal", "status_code", "detalhamento_inconsistencia", "nome_consultor"] if c in df_consistencia_mes.columns]
     df_final = df_consistencia_mes[cols_consist_raw].copy()
-    # Renomear nome_consultor da raw para referência posterior
     if "nome_consultor" in df_final.columns:
         df_final.rename(columns={"nome_consultor": "nome_consultor_raw"}, inplace=True)
     else:
@@ -266,12 +276,10 @@ def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict
         df_final["data_carencia_fim"] = None
         df_final["data_inicio_vinculo"] = None
 
-    # Fallback: priorizar vínculo, depois raw, depois constante
     df_final["nome_consultor"] = (
         df_final["nome_consultor"]
         .combine_first(df_final["nome_consultor_raw"])
     )
-    # Limpar valores inválidos: 'nan', 'None', strings internas, etc.
     _invalidos_consultor = {"nan", "none", "2222", "internolennon", "interno", "labor rural"}
     def _sanitizar_consultor(v):
         if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -289,7 +297,6 @@ def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict
     else:
         df_final["consistencia_anual"] = None
 
-    # Exceções (default 0)
     df_final["excecao"] = 0
 
     # 5. Profissão do Consultor (sq_dim_consultor)
@@ -305,14 +312,51 @@ def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict
             df_final["nome_norm"] = df_final["nome_consultor"].apply(normalizar_texto)
             df_final = df_final.merge(df_consultores[["nome_norm", "profissao_consultor"]], on="nome_norm", how="left")
             df_final.drop(columns=["nome_norm"], inplace=True)
-            print(f"✅ Dimensão de consultores associada com sucesso.")
+            print("✅ Dimensão de consultores associada com sucesso.")
         else:
             df_final["profissao_consultor"] = None
     except Exception as e_cons:
         print(f"⚠️ Aviso ao buscar consultores: {e_cons}")
         df_final["profissao_consultor"] = None
 
-    # 6. Formatação Final e Tipagens
+    # 6. Cálculo de meses_sequenciais (streak de consistência mensal consecutiva)
+    print("\n⚙️ 6. Calculando meses_sequenciais (streak de consistência mensal)...")
+    try:
+        historico_mensal_raw = buscar_todos_registros(
+            supabase,
+            "sq_raw_consistencia_mensal",
+            select_cols="codigo_lr, mes_referencia, consistencia_mensal"
+        )
+        if historico_mensal_raw:
+            df_hist = pd.DataFrame(historico_mensal_raw)
+            df_hist["mes_referencia"] = pd.to_datetime(df_hist["mes_referencia"]).dt.tz_localize(None).dt.to_period("M").dt.to_timestamp()
+
+            def calcular_streak(grupo):
+                grupo = grupo.sort_values("mes_referencia", ascending=False).reset_index(drop=True)
+                streak = 0
+                for _, row in grupo.iterrows():
+                    status = str(row["consistencia_mensal"] or "").lower()
+                    is_consist = "consistente" in status and "inconsistente" not in status
+                    if is_consist:
+                        streak += 1
+                    else:
+                        break
+                return streak
+
+            streak_series = df_hist.groupby("codigo_lr", group_keys=False).apply(calcular_streak)
+            streak_map = streak_series.reset_index()
+            streak_map.columns = ["codigo_lr", "meses_sequenciais"]
+            df_final = df_final.merge(streak_map, on="codigo_lr", how="left")
+            df_final["meses_sequenciais"] = df_final["meses_sequenciais"].fillna(0).astype(int)
+            print(f"✅ meses_sequenciais calculado para {len(streak_map)} produtores.")
+        else:
+            df_final["meses_sequenciais"] = 0
+            print("⚠️ Histórico mensal vazio — meses_sequenciais definido como 0.")
+    except Exception as e_streak:
+        print(f"⚠️ Erro ao calcular meses_sequenciais: {e_streak}")
+        df_final["meses_sequenciais"] = 0
+
+    # 7. Formatação Final e Tipagens
     agora_iso = datetime.now(timezone.utc).isoformat()
     df_final["data_processamento"] = agora_iso
 
@@ -329,14 +373,14 @@ def processar_carga_fato_consistencia(supabase, raiz_projeto: Path, config: dict
         "codigo_lr", "nome_consultor", "profissao_consultor", "projeto",
         "mes_referencia", "data_carencia_fim", "mes_elabore",
         "consistencia_mensal", "consistencia_anual", "status_code", "excecao",
-        "detalhamento_inconsistencia", "data_processamento"
+        "meses_sequenciais", "detalhamento_inconsistencia", "data_processamento"
     ]
     cols_existentes = [c for c in colunas_oficiais_fato if c in df_final.columns]
     df_final = df_final[cols_existentes].copy()
 
     print(f"\n📊 Total de registros consolidados para sq_fato_consistencia: {len(df_final)}")
 
-    # 7. Sanitização estrita contra NaN (JSON compliant) e Upsert em lotes
+    # 7. Sanitização estrita contra NaN e Upsert em lotes
     df_final = df_final.where(pd.notnull(df_final), None)
     records_brutos = df_final.to_dict(orient="records")
     records = []
@@ -379,7 +423,6 @@ def main():
     config = carregar_configuracao(raiz)
     supabase = obter_cliente_supabase(raiz)
 
-    # 1. Sincronizar as tabelas RAW (mensal e anual a partir dos Excels do Elabore)
     try:
         from functions.atualizar_detalhamento_consistencia import executar_sincronizacao_consistencia
     except ImportError:
@@ -391,7 +434,6 @@ def main():
     if not ok_raw:
         print("⚠️ Atenção: Carga das tabelas RAW finalizou com avisos, prosseguindo com a Fato...")
 
-    # 2. Processar e carregar a tabela sq_fato_consistencia
     print("\n📊 [ETAPA 2/2] Processando e carregando sq_fato_consistencia...")
     ok_fato = processar_carga_fato_consistencia(supabase, raiz, config)
 

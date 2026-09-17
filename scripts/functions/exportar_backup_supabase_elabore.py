@@ -22,7 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 # Ajuste do path
-raiz_projeto = Path(__file__).resolve().parents[1]
+raiz_projeto = Path(__file__).resolve().parents[2]
 for p in [
     raiz_projeto,
     raiz_projeto / "scripts",

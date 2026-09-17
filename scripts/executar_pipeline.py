@@ -114,7 +114,10 @@ def main():
             print(f"⚠️ Aviso na reconciliação: {e_rec}")
 
         try:
-            from sanitizar_tabelas_fato_supabase import executar_sanitizacao_completa
+            try:
+                from functions.sanitizar_tabelas_fato_supabase import executar_sanitizacao_completa
+            except ImportError:
+                from FUNCTIONS.sanitizar_tabelas_fato_supabase import executar_sanitizacao_completa
             print("\n🧹 [PÓS-ETL] Sanitizando tabelas fato no Supabase...")
             executar_sanitizacao_completa(modo_execucao="aplicar")
         except Exception as e_san:

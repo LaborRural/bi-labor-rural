@@ -1221,7 +1221,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     renderTablePagination('paginationDataProducers', 'tableDataProducers', withData.length);
 
-    // Tabela 6: Inconsistências
+    // Tabela 6: Consistência Mensal e Anual das Fazendas
     let inconsistencies = (consistency.tabelaInconsistentes || []).filter((row) => matches(row, filter, true));
     inconsistencies = applyColumnFilters(inconsistencies, 'tableInconsistencies');
     updateCount('countInconsistencies', inconsistencies);
@@ -1231,8 +1231,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el('tbodyInconsistencies')) el('tbodyInconsistencies').innerHTML = rowsOrEmpty(pInconsistencies, 7, (row, idx) => {
       const isGraveMensal = isStatusInconsistente(row.consistencia_mensal || row.consistencia);
       const isGraveAnual = isStatusInconsistente(row.consistencia_anual);
-      const isGrave = isGraveMensal || isGraveAnual;
-      const rowClass = isGrave ? 'table-row-grave' : 'table-row-pending';
+      const isConsistMensal = isStatusConsistente(row.consistencia_mensal || row.consistencia);
+      const isConsistAnual = isStatusConsistente(row.consistencia_anual);
+
+      let rowClass = '';
+      if (isGraveMensal || isGraveAnual) {
+        rowClass = 'table-row-grave';
+      } else if (!isConsistMensal || !isConsistAnual) {
+        rowClass = 'table-row-pending';
+      }
 
       const getBadgeClass = (val) => {
         const str = String(val || '').toLowerCase();
@@ -1244,8 +1251,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const badgeClassMensal = getBadgeClass(row.consistencia_mensal || row.consistencia);
       const badgeClassAnual = getBadgeClass(row.consistencia_anual);
       const prodName = row.produtor || row.codigo_lr || '—';
+      const seqText = row.meses_sequenciais != null ? number(row.meses_sequenciais) : '—';
 
-      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(prodName)}"><strong>${escapeHtml(prodName)}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center font-tabular">${number(row.meses_sequenciais)}</td><td class="col-center"><span class="badge ${badgeClassMensal}" title="${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}">${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}</span></td><td class="col-center"><span class="badge ${badgeClassAnual}" title="${escapeHtml(row.consistencia_anual || 'SEM DADOS')}">${escapeHtml(row.consistencia_anual || 'SEM DADOS')}</span></td><td class="col-center"><button class="link-button btn-view-details" type="button" onclick="window.openInconsistencyDetail('${escapeHtml(row.codigo_lr || row.produtor)}')">Ver detalhes ›</button></td></tr>`;
+      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(prodName)}"><strong>${escapeHtml(prodName)}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-center font-tabular">${seqText}</td><td class="col-center"><span class="badge ${badgeClassMensal}" title="${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}">${escapeHtml(row.consistencia_mensal || 'SEM DADOS')}</span></td><td class="col-center"><span class="badge ${badgeClassAnual}" title="${escapeHtml(row.consistencia_anual || 'SEM DADOS')}">${escapeHtml(row.consistencia_anual || 'SEM DADOS')}</span></td><td class="col-center"><button class="link-button btn-view-details" type="button" onclick="window.openInconsistencyDetail('${escapeHtml(row.codigo_lr || row.produtor)}')">Ver detalhes ›</button></td></tr>`;
     });
     renderTablePagination('paginationInconsistencies', 'tableInconsistencies', inconsistencies.length);
   }
@@ -1711,7 +1719,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const d = new Date();
     const dateStr = `${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}_${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
     link.href = url;
-    link.download = `${dateStr}_inconsistencias_identificadas.csv`;
+    link.download = `${dateStr}_consistencia_fazendas.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

@@ -274,31 +274,29 @@ module.exports = async (req, res) => {
         else if (isAnualInconsist) sitAnual = statusAnualStr.includes('outlier') ? 'Outlier' : (statusAnualStr.includes('diverg') ? 'Divergente' : 'Inconsistente');
         else if (rawAnualVal) sitAnual = String(rawAnualVal);
 
-        if (isInconsistente || isSemDados || isAnualInconsist || isAnualSemDados) {
-          const produtorAtivo = produtoresMap.get(c.codigo_lr);
-          const metaFallback = fallbackMetaMap.get(c.codigo_lr);
-          const nomeProdutor = produtorAtivo?.nome_produtor || metaFallback?.nome_produtor || c.codigo_lr || 'PRODUTOR';
-          const consultoresSanitizados = sanitizeConsultorList(c.nome_consultor || produtorAtivo?.nome_consultor || metaFallback?.nome_consultor);
-          const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
+        const produtorAtivo = produtoresMap.get(c.codigo_lr);
+        const metaFallback = fallbackMetaMap.get(c.codigo_lr);
+        const nomeProdutor = produtorAtivo?.nome_produtor || metaFallback?.nome_produtor || c.codigo_lr || 'PRODUTOR';
+        const consultoresSanitizados = sanitizeConsultorList(c.nome_consultor || produtorAtivo?.nome_consultor || metaFallback?.nome_consultor);
+        const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
 
-          listaInconsistentes.push({
-            codigo_lr: c.codigo_lr || 'PRODUTOR',
-            produtor: nomeProdutor,
-            consultor: consultorNome,
-            agroindustria: mapAgroindustria(produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
-            regiao: getRegiao(c.codigo_lr, produtorAtivo?.unidade_atendimento || metaFallback?.unidade_atendimento, produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
-            projeto: c.projeto || produtorAtivo?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
-            status: produtorAtivo ? 'ATIVO' : 'INATIVO',
-            mes_referencia: c.mes_referencia || refMonth,
-            meses_sequenciais: seq,
-            consistencia_mensal: sitMensal,
-            consistencia_anual: sitAnual,
-            consistencia: sitMensal,
-            detalhamento: detalheConsist || null,
-            consistencia_anual_raw: rawAnualVal,
-            detalhamento_anual: detalheConsistAnual
-          });
-        }
+        listaInconsistentes.push({
+          codigo_lr: c.codigo_lr || 'PRODUTOR',
+          produtor: nomeProdutor,
+          consultor: consultorNome,
+          agroindustria: mapAgroindustria(produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
+          regiao: getRegiao(c.codigo_lr, produtorAtivo?.unidade_atendimento || metaFallback?.unidade_atendimento, produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
+          projeto: c.projeto || produtorAtivo?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
+          status: produtorAtivo ? 'ATIVO' : 'INATIVO',
+          mes_referencia: c.mes_referencia || refMonth,
+          meses_sequenciais: c.meses_sequenciais != null ? seq : null,
+          consistencia_mensal: sitMensal,
+          consistencia_anual: sitAnual,
+          consistencia: sitMensal,
+          detalhamento: detalheConsist || null,
+          consistencia_anual_raw: rawAnualVal,
+          detalhamento_anual: detalheConsistAnual
+        });
       });
     }
 
