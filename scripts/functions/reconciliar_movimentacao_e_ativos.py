@@ -205,7 +205,8 @@ def executar_reconciliacao(reindex_completo: bool = False):
             cod = str(row.get("codigo_lr") or "").strip()
             if not cod or cod.lower() == "nan":
                 continue
-            cons = extrair_consultor_individual(row.get("consultor_grupo_atendimento"), row.get("grupo_atendimento"))
+            raw_cons = str(row.get("consultor_grupo_atendimento") or row.get("grupo_atendimento") or "").strip()
+            cons = raw_cons if (raw_cons and raw_cons.lower() != "nan") else extrair_consultor_individual(row.get("consultor_grupo_atendimento"), row.get("grupo_atendimento"))
             proj = str(row.get("projeto") or "").strip().upper()
             if proj not in PROJETOS_OFICIAIS:
                 continue
@@ -220,22 +221,21 @@ def executar_reconciliacao(reindex_completo: bool = False):
             else:
                 dt_mov = "2024-01-01"
                 
-            # Somente incluir se for ANTES de 2026 (2026 em diante vem da lista de cadastro oficial)
-            if dt_mov < "2026-01-01":
-                nome_prod_vinc = str(row.get("nome_produtor") or "").strip()
-                id_comp = f"{cod}_{cons}_{dt_mov}_Entrada"
-                movimentacoes_lista.append({
-                    "id_composto": id_comp,
-                    "codigo_lr": cod,
-                    "nome_consultor": cons,
-                    "nome_produtor": nome_prod_vinc if (nome_prod_vinc and nome_prod_vinc.lower() != "nan") else None,
-                    "numero_atendimento": None,
-                    "data_movimentacao": dt_mov,
-                    "movimentacao": "Entrada",
-                    "motivo_inativacao": None,
-                    "outro_motivo": None,
-                    "data_processamento": datetime.now(FUSO_SP).isoformat(),
-                })
+            # Incluir todas as entradas válidas de vínculos (preservando o grupo completo)
+            nome_prod_vinc = str(row.get("nome_produtor") or "").strip()
+            id_comp = f"{cod}_{dt_mov}_Entrada"
+            movimentacoes_lista.append({
+                "id_composto": id_comp,
+                "codigo_lr": cod,
+                "nome_consultor": cons,
+                "nome_produtor": nome_prod_vinc if (nome_prod_vinc and nome_prod_vinc.lower() != "nan") else None,
+                "numero_atendimento": None,
+                "data_movimentacao": dt_mov,
+                "movimentacao": "Entrada",
+                "motivo_inativacao": None,
+                "outro_motivo": None,
+                "data_processamento": datetime.now(FUSO_SP).isoformat(),
+            })
 
     # Mapeamento dimensional para validação da cadeia produtiva com paginação transparente (P-09)
     df_all_vinc = consultar_tabela_supabase("sq_raw_vinculos", "codigo_lr, projeto, tipo_ponto_atendimento, nome_produtor", raiz=raiz_projeto)
@@ -274,7 +274,55 @@ def executar_reconciliacao(reindex_completo: bool = False):
                 return True
         return False
 
-    # 4.2 Entradas de 2026 em diante (a partir de *_LISTA_CADASTRO.xlsx - Filtrado apenas LEITE)
+    # 4.2 Entradas de 2026 em diante (a partir de *_LISTA_CADASTRO.xlsx E de atendimentos de CADASTRO em sq_raw_visitas)
+    # A) Leitura dos atendimentos de cadastro vindos do SmartQuestion (sq_raw_visitas / LISTA_GERAL_VISITAS.xlsx)
+    try:
+        df_raw_visitas_cad = consultar_tabela_supabase(
+            "sq_raw_visitas",
+            "id_atendimento, nome_consultor, codigo_lr, nome_produtor, data_visita, tipo_visita, projeto",
+            filtros=[("gte", "data_visita", "2026-01-01")],
+            raiz=raiz_projeto
+        )
+        if not df_raw_visitas_cad.empty:
+            m_cad = (
+                df_raw_visitas_cad["tipo_visita"].astype(str).str.upper().str.contains("CADASTRO") |
+                df_raw_visitas_cad["codigo_lr"].astype(str).str.upper().str.contains("CADASTRO")
+            )
+            df_cads_vis = df_raw_visitas_cad[m_cad].copy()
+            for _, r_cv in df_cads_vis.iterrows():
+                id_atend = str(r_cv.get("id_atendimento") or "").strip().replace(".0", "")
+                if not id_atend or id_atend.lower() == "nan":
+                    continue
+                dt_vis = pd.to_datetime(r_cv.get("data_visita"), errors="coerce")
+                if pd.isna(dt_vis):
+                    continue
+                dt_mov = dt_vis.strftime("%Y-%m-01")
+                
+                cod_raw = str(r_cv.get("codigo_lr") or "").strip()
+                cod = cod_raw if (cod_raw and "CADASTRO" not in cod_raw.upper() and cod_raw.lower() != "nan") else f"CAD_{id_atend}"
+                cons = extrair_consultor_individual(r_cv.get("nome_consultor"))
+                nome_p = str(r_cv.get("nome_produtor") or "").strip()
+                if "PARA CADASTRO" in nome_p.upper() or "CADASTRO" in nome_p.upper() or not nome_p:
+                    nome_p = mapa_lr_nome.get(cod) or f"Novo Produtor ({id_atend})"
+                    
+                id_atend_num = int(id_atend) if str(id_atend).isdigit() else id_atend
+                id_comp = f"CAD_{id_atend}_{dt_mov}_Entrada"
+                movimentacoes_lista.append({
+                    "id_composto": id_comp,
+                    "codigo_lr": cod,
+                    "nome_consultor": cons,
+                    "nome_produtor": nome_p,
+                    "numero_atendimento": id_atend_num,
+                    "data_movimentacao": dt_mov,
+                    "movimentacao": "Entrada",
+                    "motivo_inativacao": None,
+                    "outro_motivo": "Cadastro de Produtor(a)",
+                    "data_processamento": datetime.now(FUSO_SP).isoformat(),
+                })
+    except Exception as e_vis_cad:
+        print(f"   ⚠️ Aviso ao extrair atendimentos de cadastro em sq_raw_visitas: {e_vis_cad}")
+
+    # B) Leitura de planilhas adicionais de cadastro (*_LISTA_CADASTRO.xlsx se existirem)
     arquivos_cad = list(bd_path.glob("*_LISTA_CADASTRO.xlsx")) + list((bd_path / "BACKUPS").glob("*_LISTA_CADASTRO.xlsx"))
     if arquivos_cad:
         for arq_cad in arquivos_cad:
@@ -377,10 +425,10 @@ def executar_reconciliacao(reindex_completo: bool = False):
                     if not eh_cadeia_leite(proj_inat, cod_raw):
                         continue
                 dt_mov = dt_efetiva.strftime("%Y-%m-01")
-                id_comp = f"INAT_{id_atend}_{dt_mov}_Saída" if id_atend else f"{cod}_{cons}_{dt_mov}_Saída"
+                id_comp = f"{cod}_{dt_mov}_Saída"
             else:
                 dt_mov = config.mes_referencia.strftime("%Y-%m-01")
-                id_comp = f"{cod}_{cons}_{dt_mov}_Saída"
+                id_comp = f"{cod}_{dt_mov}_Saída"
                 
             motivo = row.get("motivo_inativacao")
             outro = row.get("outro_motivo")
@@ -399,7 +447,18 @@ def executar_reconciliacao(reindex_completo: bool = False):
                 "data_processamento": datetime.now(FUSO_SP).isoformat(),
             })
             
-    df_mov_final = pd.DataFrame(movimentacoes_lista).drop_duplicates(subset=["id_composto"], keep="last")
+    df_mov_final = pd.DataFrame(movimentacoes_lista).sort_values(
+        by=["numero_atendimento"], na_position="first"
+    ).drop_duplicates(subset=["codigo_lr", "movimentacao", "data_movimentacao"], keep="last").copy()
+    
+    # Recalcular id_composto final garantindo unicidade perfeita
+    def _gerar_id_comp(r):
+        if r["movimentacao"] == "Entrada" and pd.notna(r.get("numero_atendimento")):
+            return f"CAD_{int(float(r['numero_atendimento']))}_{r['data_movimentacao']}_Entrada"
+        return f"{r['codigo_lr']}_{r['data_movimentacao']}_{r['movimentacao']}"
+
+    df_mov_final["id_composto"] = df_mov_final.apply(_gerar_id_comp, axis=1)
+    df_mov_final = df_mov_final.drop_duplicates(subset=["id_composto"], keep="last")
     print(f"   -> Total de movimentações consolidadas: {len(df_mov_final)} (Entradas: {len(df_mov_final[df_mov_final['movimentacao'] == 'Entrada'])}, Saídas: {len(df_mov_final[df_mov_final['movimentacao'] == 'Saída'])})")
     
     # 4.4 Limpar rigorosamente registros de 2026 em diante no Supabase antes de reinserir
@@ -415,10 +474,10 @@ def executar_reconciliacao(reindex_completo: bool = False):
     except Exception as e_clean:
         print(f"   ⚠️ Aviso ao limpar registros de 2026: {e_clean}")
 
-    # Upsert em lotes em sq_fato_movimentacao
+    # Upsert em lotes em sq_fato_movimentacao (1000 registros por lote)
     print("\n💾 5. Gravando movimentações consolidadas em sq_fato_movimentacao no Supabase...")
     registros_mov = df_mov_final.replace({np.nan: None}).to_dict(orient="records")
-    LOTE = 500
+    LOTE = 1000
     sucesso_mov = 0
     for i in range(0, len(registros_mov), LOTE):
         lote = registros_mov[i : i + LOTE]
@@ -427,7 +486,7 @@ def executar_reconciliacao(reindex_completo: bool = False):
             sucesso_mov += len(lote)
         except Exception as e:
             print(f"   ❌ Erro ao enviar lote {i // LOTE + 1}: {e}")
-        time.sleep(0.2)
+        time.sleep(0.01)
     print(f"   ✅ {sucesso_mov} registros de movimentação atualizados no Supabase.")
 
     # 6. Reconciliar Tabelas de Fazendas:
@@ -456,7 +515,8 @@ def executar_reconciliacao(reindex_completo: bool = False):
             dt_str = dt_efetiva.strftime("%Y-%m-01") if pd.notna(dt_efetiva) else None
 
             if c and dt_str:
-                if c not in inativacoes_por_codigo or dt_str < inativacoes_por_codigo[c]:
+                # Usar a data de inativação mais recente (caso o produtor tenha inativação antiga e nova)
+                if c not in inativacoes_por_codigo or dt_str > inativacoes_por_codigo[c]:
                     inativacoes_por_codigo[c] = dt_str
 
     print(f"   -> Mapeados {len(inativacoes_por_codigo)} produtores com inativação confirmada.")
@@ -582,10 +642,23 @@ def executar_reconciliacao(reindex_completo: bool = False):
         'ATEG_CCPR', 'CCPR', 'LPA', 'REGENERA', 'SEMEAR', 'COPRIL', 'CAMPILEITE', 'NESTLE', 'EDUCAMPO'
     ]
 
+    GRUPOS_CFT_EXCLUSIVOS = [
+        "DAYANNE UCHOA VEIGA / DEBORA LIMA DE OLIVEIRA / MARIO BARBOSA ROSA FILHO / MATEUS CARNIELLI / TALITA FONTES / THAYNAN FERREIRA DE ARAUJO",
+        "HUGO LOPES / MATEUS CARNIELLI / ROMARCIO PAULO DE OLIVEIRA / THAYNAN FERREIRA DE ARAUJO",
+        "BRUNO ANTONIO FERRONI RODRIGUES / HUGO LOPES / MATEUS CARNIELLI / THAYNAN FERREIRA DE ARAUJO",
+        "MATHEUS GOMIDES GONCALVES",
+        "TALITA FONTES"
+    ]
+
     def eh_puramente_cft(grupo_str, proj_str, nome_grupo_limpo):
         g_up = str(grupo_str or "").strip().upper()
         p_up = str(proj_str or "").strip().upper()
         
+        # Checagem de grupo exclusivo de CFT
+        if any(gcft in g_up for gcft in GRUPOS_CFT_EXCLUSIVOS):
+            if not any(p_val in p_up for p_val in PROJETOS_OFICIAIS_VALIDOS):
+                return True
+
         # Se o projeto da fazenda contiver "CFT" (ex: CFT DANONE 2026, CFT LPA 2026, CFT PIRACANJUBA, QUILLAYES - CFT)
         if "CFT" in p_up:
             matches_g = re.findall(r'\((.*?)\)', g_up)
@@ -806,7 +879,7 @@ def executar_reconciliacao(reindex_completo: bool = False):
         print(f"   ℹ️ Aviso ao expurgar mês atual de {tabela_destino_raw}: {e_del_raw}")
 
     recs_todos = df_todos.to_dict(orient="records")
-    LOTE = 500
+    LOTE = 1000
     sucesso_raw = 0
     erros_raw = 0
 
@@ -822,7 +895,7 @@ def executar_reconciliacao(reindex_completo: bool = False):
             except Exception as e_raw2:
                 erros_raw += len(lote)
                 print(f"     ❌ Erro ao enviar lote {i // LOTE + 1} para {tabela_destino_raw}: {e_raw2}")
-        time.sleep(0.05)
+        time.sleep(0.01)
     print(f"   ✅ {sucesso_raw} registros gravados em {tabela_destino_raw} (falhas: {erros_raw}).")
 
     # Tenta também sq_raw_fazendas_grupo se configurada com nome distinto e disponível
@@ -906,6 +979,20 @@ def executar_reconciliacao(reindex_completo: bool = False):
         codigos_ativos_excel.update(codigos_lg_ativos)
         print(f"   -> {len(codigos_lg_ativos)} fazendas ativas adicionadas a partir de LISTA_GERAL_RELATORIO_DE_GRUPO.xlsx (total ativos consolidados: {len(codigos_ativos_excel)}).")
 
+    # Carregar lista de códigos de produtores com atendimento/visita em sq_raw_visitas
+    codigos_com_visita = set()
+    try:
+        df_vis_cods = consultar_tabela_supabase(
+            "sq_raw_visitas",
+            "codigo_lr",
+            raiz=raiz_projeto
+        )
+        if not df_vis_cods.empty and "codigo_lr" in df_vis_cods.columns:
+            codigos_com_visita = set(df_vis_cods["codigo_lr"].dropna().astype(str).str.strip().str.upper())
+            print(f"   -> {len(codigos_com_visita)} produtores identificados com relatórios de visita em sq_raw_visitas.")
+    except Exception as e_v_cods:
+        print(f"   ⚠️ Aviso ao carregar visitas para validação CFT: {e_v_cods}")
+
     # ── VÍNCULOS E GRUPOS UNIFICADOS: Combinar LISTA_GERAL (df_todos) + sq_raw_vinculos (df_vinculos_base)
     vinc_dict = {}
     if not df_vinculos_base.empty:
@@ -981,13 +1068,17 @@ def executar_reconciliacao(reindex_completo: bool = False):
             if ("_INATIVO" in c.upper()) or ("(INATIVO)" in nome_p.upper()) or ("_INATIVO" in nome_p.upper()):
                 continue
 
-            # Priorizar grupo completo da LISTA_GERAL_RELATORIO_DE_GRUPO (contém todos os co-consultores)
+            # Priorizar grupo completo da LISTA_GERAL_RELATORIO_DE_GRUPO, exceto se estiver como NÃO ATRIBUÍDO
             grupo_val = str(r.get("grupo_atendimento") or "")
             grp_lg, grp_limp_lg = mapa_grupos_lista_geral.get(c.upper(), (None, None))
-            grupo_efetivo = grp_lg if grp_lg else grupo_val
-            nome_grupo_efetivo = grp_limp_lg if grp_limp_lg else extrair_nome_grupo_limpo(grupo_efetivo)
+            if grp_lg and "NÃO ATRIBUÍDO" not in grp_lg.upper() and "NAO ATRIBUIDO" not in grp_lg.upper():
+                grupo_efetivo = grp_lg
+                nome_grupo_efetivo = grp_limp_lg if grp_limp_lg else extrair_nome_grupo_limpo(grupo_efetivo)
+            else:
+                grupo_efetivo = grupo_val
+                nome_grupo_efetivo = extrair_nome_grupo_limpo(grupo_efetivo)
 
-            # 0.1 Se a fazenda for PURAMENTE CFT (sem nenhum projeto nem consultor de consultoria oficial vinculado), NÃO sobe para a dimensão analítica
+            # 0.1 Se a fazenda for PURAMENTE CFT ou de grupo exclusivo CFT, NUNCA entra na dimensão de ativos
             proj_val = str(r.get("projeto") or "")
             if eh_puramente_cft(grupo_efetivo, proj_val, nome_grupo_efetivo):
                 continue
@@ -1012,9 +1103,9 @@ def executar_reconciliacao(reindex_completo: bool = False):
             if not is_ativo_excel and c in inativacoes_por_codigo and inativacoes_por_codigo[c] <= ref_m:
                 continue
 
-            # 3. Se vinculo_ativo é False no Supabase e o produtor já estava inativo
+            # 3. Se vinculo_ativo é False no Supabase e o produtor já estava inativo em data <= ref_m
             v_ativo = r.get("vinculo_ativo")
-            if v_ativo is False and c in inativacoes_por_codigo:
+            if v_ativo is False and c in inativacoes_por_codigo and inativacoes_por_codigo[c] <= ref_m:
                 continue
 
             # 4. Se o produtor foi cadastrado como novo em data > ref_m: ainda não havia entrado
@@ -1076,7 +1167,7 @@ def executar_reconciliacao(reindex_completo: bool = False):
                 except Exception as e2:
                     erros_ativos += len(lote_at)
                     print(f"     ❌ Erro ao enviar lote de ativos {i // LOTE + 1}: {e2}")
-            time.sleep(0.05)
+            time.sleep(0.01)
 
         print(f"   ✅ {sucesso_ativos} produtores ativos atualizados para {ref_m} em {tabela_ativos} (falhas: {erros_ativos}).")
 
@@ -1086,4 +1177,4 @@ def executar_reconciliacao(reindex_completo: bool = False):
 
 
 if __name__ == "__main__":
-    executar_reconciliacao()
+    executar_reconciliacao(reindex_completo=True)

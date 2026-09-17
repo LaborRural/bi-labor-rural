@@ -48,6 +48,14 @@ const LAC_CONSULTORIA_RAW = new Set([
   'SUELY DE JESUS OLIVEIRA'
 ]);
 
+/** Grupos exclusivos de CFT */
+const GRUPOS_CFT_EXCLUSIVOS = new Set([
+  'DAYANNE UCHOA VEIGA / DEBORA LIMA DE OLIVEIRA / MARIO BARBOSA ROSA FILHO / MATEUS CARNIELLI / TALITA FONTES / THAYNAN FERREIRA DE ARAUJO',
+  'HUGO LOPES / MATEUS CARNIELLI / ROMARCIO PAULO DE OLIVEIRA / THAYNAN FERREIRA DE ARAUJO',
+  'BRUNO ANTONIO FERRONI RODRIGUES / HUGO LOPES / MATEUS CARNIELLI / THAYNAN FERREIRA DE ARAUJO',
+  'MATHEUS GOMIDES GONCALVES'
+]);
+
 /** Perfis de coordenação, supervisão ou contas genéricas que NÃO realizam visitas de campo */
 const NON_FIELD_CONSULTANTS = new Set([
   'TALITA FONTES',
@@ -71,7 +79,7 @@ const NON_FIELD_CONSULTANTS = new Set([
 ]);
 
 function isNonFieldConsultant(name) {
-  if (!name) return true;
+  if (!name) return false;
   const upper = String(name).trim().toUpperCase();
   if (NON_FIELD_CONSULTANTS.has(upper)) return true;
   if (upper.startsWith('TALITA FONTES')) return true;
@@ -81,10 +89,7 @@ function isNonFieldConsultant(name) {
   return false;
 }
 
-/**
- * Recebe o conteúdo bruto de grupo/consultor e retorna array de consultores saneados.
- * Remove consultores não operacionais (ex: Talita Fontes, contas genéricas).
- */
+/** Recebe o conteúdo bruto de grupo/consultor e retorna array de consultores saneados. */
 function sanitizeConsultorList(rawName) {
   if (!rawName) return [];
   return String(rawName)
@@ -109,6 +114,13 @@ function isTestData(nome_consultor, projeto) {
 function ehCadeiaLeite(projeto) {
   if (!projeto) return true;
   const p = String(projeto).trim().toUpperCase();
+  // Se for projeto puramente CFT (ex: CFT DANONE 2026, CFT LPA 2026, QUILLAYES - CFT) sem projeto oficial de leite
+  if (p.includes('CFT')) {
+    const PROJETOS_OFICIAIS_LEITE = ['ALVOAR', 'CCPR', 'LPA', 'REGENERA', 'SEMEAR', 'COPRIL', 'CAMPILEITE', 'NESTLE', 'EDUCAMPO'];
+    if (!PROJETOS_OFICIAIS_LEITE.some(proj => p.includes(proj))) {
+      return false;
+    }
+  }
   const TERMOS_NAO_LEITE = [
     'MAIS GRAOS', 'MAIS GRÃOS', 'GRAOS', 'GRÃOS',
     'MIMC', 'M&E', 'CAFE&GESTAO', 'CAFE & GESTAO', 'CAFÉ & GESTÃO',

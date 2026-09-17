@@ -62,11 +62,12 @@ smartquestion:
     visita_ccpr: "LISTA_CCPR_VISITA.xlsx"
     visita_lpa: "LISTA_LPA_VISITA.xlsx"
     visita_geral: "LISTA_GERAL_VISITAS.xlsx"
+    visita_historico: "BD_SMARTQUESTION/BACKUPS/VISITAS/LISTA_GERAL_VISITAS_2022_2025.xlsx"
 
 # ⚙️ PARÂMETROS DE EXECUÇÃO DO PIPELINE
 execucao:
-  chunk_size_upsert: 100               # Tamanho do lote para envio ao Supabase
-  pausa_lote_segundos: 0.5             # Pausa entre lotes para não sobrecarregar a API
+  chunk_size_upsert: 1000              # Tamanho do lote oficial para envio ao Supabase (1000 registros por lote)
+  pausa_lote_segundos: 0.05            # Pausa mínima entre lotes para aceleração máxima do ETL
   formato_data: "%Y-%m-%d"
   encoding: "utf-8"
 
@@ -76,6 +77,6 @@ referencia:
   periodo_checagem_inicio: "2024-01-01"   # Início do período amplo de checagem
   data_inicial_analise: "2025-01-01"      # Data inicial padrão para consistência e análises gerais
   data_inicial_elabore: "2025-12-01"      # Data inicial específica do projeto Elabore
-  data_inicial_fato_visitas: "2024-01-01" # Data inicial da carga da Fato Visitas
+  data_inicial_fato_visitas: "2026-01-01" # Data inicial da carga da Fato Visitas para o fluxo regular (2026 em diante)
   ano_filtro_inicio: 2024                 # Ano inicial de filtragem para bases históricas
   meses_consecutivos_minimos: 12          # Quantidade mínima de meses consecutivos

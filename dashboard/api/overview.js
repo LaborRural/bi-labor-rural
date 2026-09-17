@@ -245,7 +245,7 @@ module.exports = async (req, res) => {
       fetchWithCache('FATO_MOVIMENTACAO', () =>
         fetchAll(() => supabase
           .from('sq_fato_movimentacao')
-          .select('codigo_lr, nome_consultor, data_movimentacao, movimentacao, motivo_inativacao, outro_motivo')
+          .select('codigo_lr, nome_consultor, nome_produtor, numero_atendimento, data_movimentacao, movimentacao, motivo_inativacao, outro_motivo')
           .order('data_movimentacao', { ascending: false })).catch(() => [])
       ),
       fetchWithCache(`FATO_CONSISTENCIA_${visitasMonth || 'ALL'}`, async () => {
@@ -317,6 +317,20 @@ module.exports = async (req, res) => {
       if (isSaida && m.codigo_lr) inativacoesSet.add(String(m.codigo_lr).trim().toUpperCase());
     });
 
+    function toMonthKey(str) {
+      if (!str) return '';
+      const s = String(str).trim();
+      if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}`;
+      }
+      if (s.includes('-')) {
+        const parts = s.split('-');
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}`;
+      }
+      return s.slice(0, 7);
+    }
+
     // Combinar AMBAS as fontes: sq_raw_consistencia_mensal tem prioridade sobre sq_fato_consistencia
     // Indexar por mes_elabore E mes_referencia para cobrir dados antes e depois da migration
     const elaboreMensalMap = new Map();
@@ -324,15 +338,17 @@ module.exports = async (req, res) => {
     // 1. Primeiro indexar sq_fato_consistencia (base)
     (consistenciaList || []).forEach(item => {
       const cod = String(item.codigo_lr).trim().toUpperCase();
-      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${String(item.mes_elabore).slice(0, 7)}`, item);
-      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${String(item.mes_referencia).slice(0, 7)}`, item);
+      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${toMonthKey(item.mes_elabore)}`, item);
+      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${toMonthKey(item.mes_referencia)}`, item);
+      elaboreMensalMap.set(cod, item);
     });
 
     // 2. Sobrescrever com sq_raw_consistencia_mensal (mais granular, tem prioridade)
     (elaboreMensalList || []).forEach(item => {
       const cod = String(item.codigo_lr).trim().toUpperCase();
-      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${String(item.mes_elabore).slice(0, 7)}`, item);
-      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${String(item.mes_referencia).slice(0, 7)}`, item);
+      if (item.mes_elabore) elaboreMensalMap.set(`${cod}_${toMonthKey(item.mes_elabore)}`, item);
+      if (item.mes_referencia) elaboreMensalMap.set(`${cod}_${toMonthKey(item.mes_referencia)}`, item);
+      elaboreMensalMap.set(cod, item);
     });
 
     // fonteElabore para elaboreSet (union das duas)
@@ -412,7 +428,7 @@ module.exports = async (req, res) => {
     const produtoresConsistenciaMap = new Map((produtoresConsistenciaFiltrados || []).map(p => [p.codigo_lr, p]));
     const consistenciaFiltrada = (consistenciaList || []).filter(c => {
       const p = produtoresConsistenciaMap.get(c.codigo_lr);
-      return rowMatches({ ...c, unidade_atendimento: p?.unidade_atendimento, nome_produtor: p?.nome_produtor });
+      return rowMatches({ ...c, unidade_atendimento: p?.unidade_atendimento, nome_produtor: p?.nome_produtor, nome_consultor: p?.nome_consultor, projeto: p?.projeto });
     });
 
     // KPIs
@@ -494,16 +510,18 @@ module.exports = async (req, res) => {
     const visitasPorMes = new Map();
     const ativosPorMes = new Map();
     (visitasHistFiltradas || []).forEach(v => {
-      if (!v.mes_referencia) return;
-      if (!visitasPorMes.has(v.mes_referencia)) visitasPorMes.set(v.mes_referencia, { total: 0, produtores: new Set() });
-      const item = visitasPorMes.get(v.mes_referencia);
+      const refKey = String(v.mes_referencia || '').slice(0, 10);
+      if (!refKey) return;
+      if (!visitasPorMes.has(refKey)) visitasPorMes.set(refKey, { total: 0, produtores: new Set() });
+      const item = visitasPorMes.get(refKey);
       item.total += 1;
       if (v.codigo_lr) item.produtores.add(v.codigo_lr);
     });
     (produtoresHistFiltrados || []).forEach(p => {
-      if (!p.data_referencia) return;
-      if (!ativosPorMes.has(p.data_referencia)) ativosPorMes.set(p.data_referencia, new Set());
-      if (p.codigo_lr) ativosPorMes.get(p.data_referencia).add(p.codigo_lr);
+      const refKey = String(p.data_referencia || '').slice(0, 10);
+      if (!refKey) return;
+      if (!ativosPorMes.has(refKey)) ativosPorMes.set(refKey, new Set());
+      if (p.codigo_lr) ativosPorMes.get(refKey).add(p.codigo_lr);
     });
 
     const fazendasVisitadasNoPortfolio = referencias.map(ref => {
@@ -725,9 +743,11 @@ module.exports = async (req, res) => {
         const propriedadeFinal = propAtivoVal || propVisitaVal || 'PROPRIEDADE';
 
         const propriedadeNorm = String(propriedadeFinal).trim().toUpperCase();
-        const monthKey = String(v.mes_referencia || refMonth || '').slice(0, 7);
-        const elaboreObj = elaboreMensalMap.get(`${codLrNorm}_${monthKey}`);
+        const monthKey = toMonthKey(v.mes_referencia || v.data_visita || refMonth);
+        const elaboreObj = elaboreMensalMap.get(`${codLrNorm}_${monthKey}`) || elaboreMensalMap.get(codLrNorm);
         
+        const isInactiveVisit = inativacoesSet.has(codLrNorm) || !produtorAtivo || String(v.status || produtorAtivo?.status || '').trim().toUpperCase().includes('INATIV');
+
         const isCadastradoElabore = 
           cadastradosElaboreSet.has(codLrNorm) || 
           (produtorNorm && cadastradosElaboreSet.has(produtorNorm)) || 
@@ -736,6 +756,7 @@ module.exports = async (req, res) => {
 
         const calcElab = calcularBlocosElabore(elaboreObj);
         const agro = mapAgroindustria(v.projeto || produtorAtivo?.projeto);
+        const cadLabelVisit = isInactiveVisit ? 'INATIVO' : (isCadastradoElabore ? 'SIM' : 'NÃO');
 
         return ({
           consultor: v.nome_consultor || 'CONSULTOR',
@@ -745,14 +766,14 @@ module.exports = async (req, res) => {
           agroindustria: agro,
           regiao: getRegiao(v.codigo_lr, produtorAtivo?.regiao || produtorAtivo?.unidade_atendimento, agro, v.projeto || produtorAtivo?.projeto),
           projeto: v.projeto || produtorAtivo?.projeto || 'NÃO INFORMADO',
-          status: 'ATIVO',
+          status: isInactiveVisit ? 'INATIVO' : 'ATIVO',
           mes_referencia: v.mes_referencia || refMonth,
           profissao: profissao,
           atendimento: numAtendimento,
           data_visita: formatDate(v.data_visita || v.mes_referencia),
           elabore_ok: calcElab.temDado,
-          cadastro_elabore: isCadastradoElabore,
-          cadastro_elabore_label: isCadastradoElabore ? 'SIM' : 'NÃO',
+          cadastro_elabore: isInactiveVisit ? 'INATIVO' : isCadastradoElabore,
+          cadastro_elabore_label: cadLabelVisit,
           dados_elabore_status: calcElab.statusStr,
           dados_elabore_pct: calcElab.pct,
           dados_elabore_tem_dado: calcElab.temDado,
@@ -765,10 +786,12 @@ module.exports = async (req, res) => {
 
     // Tabela: Movimentações
     const listaMovimentacao = (movimentacoes || []).map(m => ({
-      produtor: m.codigo_lr || 'PRODUTOR',
+      atendimento: m.numero_atendimento ? String(m.numero_atendimento) : '—',
+      produtor: m.nome_produtor || m.codigo_lr || 'PRODUTOR',
       movimentacao: String(m.movimentacao || '').toLowerCase().includes('sa') ? 'SAÍDA' : 'ENTRADA',
+      data_solicitacao: formatDate(m.data_movimentacao),
       grupo: m.nome_consultor || 'GRUPO',
-      motivo: m.motivo_inativacao || m.outro_motivo || 'NOVO VÍNCULO'
+      motivo: m.motivo_inativacao || m.outro_motivo || 'Novo Cadastro'
     }));
 
     let dataProvenance = null;

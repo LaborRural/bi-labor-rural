@@ -109,7 +109,7 @@ def main():
             except ImportError:
                 from FUNCTIONS.reconciliar_movimentacao_e_ativos import executar_reconciliacao
             print("\n🔄 [PÓS-ETL] Executando reconciliação final de movimentações e ativos...")
-            executar_reconciliacao()
+            executar_reconciliacao(reindex_completo=True)
         except Exception as e_rec:
             print(f"⚠️ Aviso na reconciliação: {e_rec}")
 

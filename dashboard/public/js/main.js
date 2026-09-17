@@ -1130,10 +1130,12 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
     if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 8, (row) => {
-      const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore);
-      const cadBadge = isCad
-        ? '<span class="badge badge-positive">SIM</span>'
-        : '<span class="badge badge-neutral">NÃO</span>';
+      const labelCad1 = String(row.cadastro_elabore_label || (row.cadastro_elabore === 'INATIVO' ? 'INATIVO' : (row.cadastro_elabore ? 'SIM' : 'NÃO'))).toUpperCase();
+      const isInactive1 = labelCad1 === 'INATIVO' || String(row.status || '').toUpperCase().includes('INATIV');
+      const isCad = !isInactive1 && row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && labelCad1 === 'SIM' && Boolean(row.cadastro_elabore);
+      const cadBadge = isInactive1
+        ? '<span class="badge badge-neutral">INATIVO</span>'
+        : (isCad ? '<span class="badge badge-positive">SIM</span>' : '<span class="badge badge-neutral">NÃO</span>');
       
       const statusDados = row.dados_elabore_status || (row.elabore_ok ? 'SIM (100%)' : 'NÃO (0%)');
       const hasData = row.dados_elabore_tem_dado || row.elabore_ok;
@@ -1196,10 +1198,12 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTableHeadIcons('tbodyDataProducers', tableSort.tbodyDataProducers.colKey, tableSort.tbodyDataProducers.dir);
     const pWithData = getPaginatedSlice('tableDataProducers', withData);
     if (el('tbodyDataProducers')) el('tbodyDataProducers').innerHTML = rowsOrEmpty(pWithData, 7, (row) => {
-      const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore ?? true);
-      const cadBadge = isCad
-        ? '<span class="badge badge-positive">SIM</span>'
-        : '<span class="badge badge-neutral">NÃO</span>';
+      const labelCad2 = String(row.cadastro_elabore_label || (row.cadastro_elabore === 'INATIVO' ? 'INATIVO' : (row.cadastro_elabore ? 'SIM' : 'NÃO'))).toUpperCase();
+      const isInactive2 = labelCad2 === 'INATIVO' || String(row.status || '').toUpperCase().includes('INATIV');
+      const isCad = !isInactive2 && row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && labelCad2 === 'SIM' && Boolean(row.cadastro_elabore ?? true);
+      const cadBadge = isInactive2
+        ? '<span class="badge badge-neutral">INATIVO</span>'
+        : (isCad ? '<span class="badge badge-positive">SIM</span>' : '<span class="badge badge-neutral">NÃO</span>');
       
       const statusDados = row.dados_elabore_status || (row.possui_dados ? 'SIM (100%)' : 'NÃO (0%)');
       const hasData = row.dados_elabore_tem_dado ?? row.possui_dados;
@@ -2799,8 +2803,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const consultor = r.consultor || 'NÃO INFORMADO';
       const projeto = r.projeto || 'NÃO INFORMADO';
       const data = r.referencia || '—';
-      const isCad = r.cadastro_elabore !== false && r.cadastro_elabore !== 'NÃO' && String(r.cadastro_elabore_label || '').toUpperCase() !== 'NÃO';
-      const cad = isCad ? 'SIM' : 'NÃO';
+      const labelCad3 = String(r.cadastro_elabore_label || (r.cadastro_elabore === 'INATIVO' ? 'INATIVO' : (r.cadastro_elabore ? 'SIM' : 'NÃO'))).toUpperCase();
+      const isInactive3 = labelCad3 === 'INATIVO' || String(r.status || '').toUpperCase().includes('INATIV');
+      const isCad = !isInactive3 && r.cadastro_elabore !== false && r.cadastro_elabore !== 'NÃO' && labelCad3 === 'SIM';
+      const cad = isInactive3 ? 'INATIVO' : (isCad ? 'SIM' : 'NÃO');
       const b = r.detalhes_blocos || {
         receita: false, qualidade: false, alimentacao: false, area: false,
         rebanho: false, mdo: false, energia_combustivel: false, despesas: false
@@ -2881,7 +2887,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const filterCell = (c) => `<th class="${c.blk ? 'blk' : c.k === 'cod' || c.k === 'data' || c.k === 'cad' || c.k === 'pct' ? 'col-center' : 'col-left'}">${
       c.k === 'cad' || c.blk
-        ? `<select class="table-col-filter" data-col="${c.k}" aria-label="Filtrar ${c.t}"><option value="">${c.blk ? '–' : 'Todos'}</option><option>SIM</option><option>NÃO</option></select>`
+        ? `<select class="table-col-filter" data-col="${c.k}" aria-label="Filtrar ${c.t}"><option value="">${c.blk ? '–' : 'Todos'}</option><option>SIM</option><option>NÃO</option><option>INATIVO</option></select>`
         : `<input type="text" class="table-col-filter" data-col="${c.k}" placeholder="Filtrar..." aria-label="Filtrar ${c.t}">`
     }</th>`;
 
@@ -2941,7 +2947,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const bodyEl = el('elBody');
     if (bodyEl) {
-      bodyEl.innerHTML = slice.length ? slice.map((r) => `<tr class="${r.cad === 'NÃO' ? 'row-nocad' : ''}" data-cod="${escapeHtml(r.cod)}">
+      bodyEl.innerHTML = slice.length ? slice.map((r) => `<tr class="${r.cad === 'NÃO' ? 'row-nocad' : (r.cad === 'INATIVO' ? 'row-inativo' : '')}" data-cod="${escapeHtml(r.cod)}">
         <td class="col-center"><strong>${escapeHtml(r.cod)}</strong></td>
         <td class="col-left" title="${escapeHtml(r.consultor)}">${escapeHtml(r.consultor)}</td>
         <td class="col-left" title="${escapeHtml(r.produtor)}">${escapeHtml(r.produtor)}</td>
@@ -3023,7 +3029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rows = getElaboreRows();
     const r = rows.find((x) => x.cod === cod);
     if (!r) return;
-    const semCad = r.cad === 'NÃO';
+    const semCad = r.cad === 'NÃO' || r.cad === 'INATIVO';
     const dadosBadge = `<span class="badge ${semCad ? 'badge-neutral' : pctClassElabore(r.pct)}">${r.status}</span>`;
     const situacao = (v) => v === 'SIM'
       ? '<span class="material-symbols-rounded ic ic-ok">check_circle</span> Possui'
@@ -3042,7 +3048,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <tr><th>ID</th><td><strong>${escapeHtml(r.cod)}</strong></td><th>Projeto</th><td>${escapeHtml(r.projeto)}</td></tr>
           <tr><th>Produtor(a)</th><td colspan="3">${escapeHtml(r.produtor)}</td></tr>
           <tr><th>Consultor(a)</th><td colspan="3">${escapeHtml(r.consultor)}</td></tr>
-          <tr><th>Última referência</th><td>${escapeHtml(r.data)}</td><th>Cadastro Elabore</th><td><span class="badge ${semCad ? 'badge-neutral' : 'badge-positive'}">${r.cad}</span></td></tr>
+          <tr><th>Última referência</th><td>${escapeHtml(r.data)}</td><th>Cadastro Elabore</th><td><span class="badge ${r.cad === 'SIM' ? 'badge-positive' : 'badge-neutral'}">${r.cad}</span></td></tr>
           <tr><th>Dados Elabore</th><td colspan="3">${dadosBadge}</td></tr>
         </tbody></table>
         <p class="det-sec">Blocos gerenciais do Elabore</p>
@@ -3050,7 +3056,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <thead><tr><th class="col-center">#</th><th>Bloco</th><th>O que cobre</th><th>Situação</th></tr></thead>
           <tbody>${BLOCOS_ELABORE.map(([k, , nome, desc], i) => `<tr class="det-${r[k] === 'SIM' ? 'ok' : r[k] === 'NÃO' ? 'no' : 'na'}">
             <td class="col-center">${i + 1}</td><td><strong>${nome}</strong></td><td>${desc}</td><td>${situacao(r[k])}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><td colspan="3">${semCad ? 'Produtor sem cadastro no Elabore' : 'Blocos preenchidos'}</td>
+          <tfoot><tr><td colspan="3">${r.cad === 'INATIVO' ? 'Produtor inativo' : (r.cad === 'NÃO' ? 'Produtor sem cadastro no Elabore' : 'Blocos preenchidos')}</td>
             <td>${semCad ? '—' : `${r.n} de 8 (${r.pct}%)`}</td></tr></tfoot>
         </table>`;
     }

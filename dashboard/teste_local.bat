@@ -32,10 +32,10 @@ if not exist "node_modules\@supabase\supabase-js" (
 
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5050 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 
-start "BI Labor Rural - Servidor" /min cmd /c "npm start"
+start "BI Labor Rural - Servidor" cmd /k "npm start"
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:5050"
 
 echo Dashboard iniciado com as APIs e os dados do Supabase.
-echo Feche a janela minimizada do servidor para encerrar.
+echo A janela do servidor continuara aberta em segundo plano.
 pause

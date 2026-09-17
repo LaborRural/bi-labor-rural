@@ -136,7 +136,7 @@ def ler_excel_seguro(caminho_excel, **kwargs):
 
 
 def executar_etl_fato_visitas(
-    data_inicial: str = '2024-01-01',
+    data_inicial: str = '2026-01-01',
     data_final: Optional[str] = None,
     raiz_projeto: Optional[Path] = None,
     tabela_fato: str = 'sq_fato_visitas',
@@ -202,7 +202,25 @@ def executar_etl_fato_visitas(
         df_visitas['tipo_clean_temp'] = df_visitas['tipo_visita'].apply(_remover_acentos_tipo)
         df_visitas = df_visitas[df_visitas['tipo_clean_temp'].isin(whitelist_norm_set)].copy()
         df_visitas.drop(columns=['tipo_clean_temp'], inplace=True, errors='ignore')
-        print(f"   -> Filtradas {linhas_antes - len(df_visitas)} visitas (excluídos formulários CFT, administrativos e outras cadeias). Restaram {len(df_visitas)} visitas técnicas de Leite.")
+
+        # Exclusão estrita de projetos puramente CFT e grupos exclusivos de CFT
+        grupos_cft_exclusivos = {
+            "DAYANNE UCHOA VEIGA / DEBORA LIMA DE OLIVEIRA / MARIO BARBOSA ROSA FILHO / MATEUS CARNIELLI / TALITA FONTES / THAYNAN FERREIRA DE ARAUJO",
+            "HUGO LOPES / MATEUS CARNIELLI / ROMARCIO PAULO DE OLIVEIRA / THAYNAN FERREIRA DE ARAUJO",
+            "BRUNO ANTONIO FERRONI RODRIGUES / HUGO LOPES / MATEUS CARNIELLI / THAYNAN FERREIRA DE ARAUJO",
+            "MATHEUS GOMIDES GONCALVES",
+            "TALITA FONTES"
+        }
+        if 'projeto' in df_visitas.columns:
+            m_cft_proj = df_visitas['projeto'].astype(str).str.upper().str.contains('CFT', na=False) & \
+                        ~df_visitas['projeto'].astype(str).str.upper().str.contains('ALVOAR|CCPR|LPA|REGENERA|SEMEAR|COPRIL|CAMPILEITE|NESTLE|EDUCAMPO', regex=True, na=False)
+            df_visitas = df_visitas[~m_cft_proj].copy()
+
+        if 'nome_consultor' in df_visitas.columns:
+            m_cft_grupo = df_visitas['nome_consultor'].astype(str).str.strip().str.upper().isin(grupos_cft_exclusivos)
+            df_visitas = df_visitas[~m_cft_grupo].copy()
+
+        print(f"   -> Filtradas {linhas_antes - len(df_visitas)} visitas (excluídos formulários CFT, administrativos, projetos/grupos CFT exclusivos e outras cadeias). Restaram {len(df_visitas)} visitas técnicas de Leite.")
 
     # 2. Extração de vínculos e inativações de produtores
     print(f"\n🔍 ETAPA 2: Importando vínculos ({tabela_raw_vinculos}) e inativações (sq_raw_inativacoes_produtor)")
@@ -430,13 +448,8 @@ def executar_etl_fato_visitas(
                 cleaned_row[k] = v
         records_limpos.append(cleaned_row)
 
-    # 7. Gravação idempotente no Supabase
-    print(f"\n💾 ETAPA 7: Limpeza prévia do período ({data_inicial} a {data_final}) e UPSERT no Supabase...")
-    try:
-        supabase.table(tabela_fato).delete().gte('data_visita', data_inicial).lte('data_visita', data_final).execute()
-        print("   ✅ Limpeza prévia do período executada com sucesso.")
-    except Exception as e:
-        print(f"   ⚠️ Aviso na limpeza prévia: {e}")
+    # 7. Gravação idempotente no Supabase (UPSERT por id_composto)
+    print(f"\n💾 ETAPA 7: Gravação por UPSERT no Supabase ({tabela_fato})...")
 
     chunk_size = 1000
     total_lotes = (len(records_limpos) + chunk_size - 1) // chunk_size

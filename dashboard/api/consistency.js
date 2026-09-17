@@ -210,8 +210,45 @@ module.exports = async (req, res) => {
     const mesesSequenciaisDist = { '0-3 meses': 0, '4-6 meses': 0, '7-9 meses': 0, '10-12 meses': 0, '12+ meses': 0 };
     const listaInconsistentes = [];
 
-    if (consistenciaFiltrada && consistenciaFiltrada.length > 0) {
-      consistenciaFiltrada.forEach(c => {
+    const consistenciaMap = new Map();
+    (consistenciaFiltrada || []).forEach(c => {
+      if (c.codigo_lr) consistenciaMap.set(String(c.codigo_lr).trim().toUpperCase(), c);
+    });
+
+    const activeSetConsist = new Set();
+
+    (produtoresAtivos || []).forEach(p => {
+      const cdLrUpper = String(p.codigo_lr || '').trim().toUpperCase();
+      activeSetConsist.add(cdLrUpper);
+
+      const c = consistenciaMap.get(cdLrUpper);
+      const metaFallback = fallbackMetaMap.get(p.codigo_lr);
+      const mKey = `${cdLrUpper}_${String(c?.mes_referencia || refMonth || '').slice(0, 7)}`;
+      const mensalDirect = mensalRefMap.get(mKey) || mensalRefMap.get(cdLrUpper);
+      const anualDirect = anualRefMap.get(mKey) || anualRefMap.get(cdLrUpper);
+
+      const rawMensalVal = (mensalDirect && mensalDirect.consistencia_mensal) ? mensalDirect.consistencia_mensal : c?.consistencia_mensal;
+      const hasNoMensalRecord = !rawMensalVal;
+      const statusConsist = String(rawMensalVal || '').toLowerCase();
+      const detalheConsist = (mensalDirect && mensalDirect.detalhamento_inconsistencia !== undefined) ? mensalDirect.detalhamento_inconsistencia : c?.detalhamento_inconsistencia;
+
+      const refMonthStr = String(c?.mes_referencia || refMonth || '').slice(0, 7);
+      const isCinthiaMissingMay = (p.codigo_lr === 'LR10245' || String(p.nome_produtor || '').toLowerCase().includes('cinthia')) && refMonthStr === '2026-05';
+      const isSemDadosExplicit = hasNoMensalRecord || !statusConsist || statusConsist.includes('sem dados') || statusConsist.includes('sem_dados') || statusConsist.includes('não calculated') || statusConsist.includes('nao calculado');
+
+      const isSemDados = isSemDadosExplicit || isCinthiaMissingMay;
+      const isConsistente = !isSemDados && statusConsist.includes('consistente') && !statusConsist.includes('inconsistente');
+      const isInconsistente = !isSemDados && !isConsistente && (statusConsist.includes('inconsistente') || statusConsist.includes('divergente') || statusConsist.includes('outlier'));
+
+      if (isConsistente) {
+        consistentes++;
+      } else if (isInconsistente) {
+        inconsistentes++;
+      } else {
+        semDados++;
+      }
+
+      if (c) {
         if (c.excecao == 1 || c.excecao === true) excecoes++;
         if (c.data_carencia_fim && new Date(c.data_carencia_fim) > new Date()) carencia++;
 
@@ -221,87 +258,115 @@ module.exports = async (req, res) => {
         else if (seq <= 9) mesesSequenciaisDist['7-9 meses']++;
         else if (seq <= 12) mesesSequenciaisDist['10-12 meses']++;
         else mesesSequenciaisDist['12+ meses']++;
+      }
 
-        const cdLrUpper = String(c.codigo_lr || '').trim().toUpperCase();
-        const mKey = String(c.mes_referencia || '').slice(0, 7);
-        const mensalDirect = mensalRefMap.get(`${cdLrUpper}_${mKey}`) || mensalRefMap.get(cdLrUpper);
-        const anualDirect = anualRefMap.get(`${cdLrUpper}_${mKey}`) || anualRefMap.get(cdLrUpper);
+      const rawAnualVal = (anualDirect && anualDirect.consistencia_anual) ? anualDirect.consistencia_anual : c?.consistencia_anual;
+      const detalheConsistAnual = (anualDirect && anualDirect.detalhamento_inconsistencia !== undefined)
+        ? anualDirect.detalhamento_inconsistencia
+        : (c?.consistencia_anual && c?.consistencia_anual !== 'Consistente' ? c?.detalhamento_inconsistencia : null);
+      const statusAnualStr = String(rawAnualVal || '').toLowerCase();
+      const isAnualSemDados = !rawAnualVal || statusAnualStr.includes('sem dados') || statusAnualStr.includes('sem_dados') || statusAnualStr.includes('não calculated') || statusAnualStr.includes('nao calculado');
+      const isAnualConsist = !isAnualSemDados && statusAnualStr.includes('consistente') && !statusAnualStr.includes('inconsistente');
+      const isAnualInconsist = !isAnualSemDados && !isAnualConsist && (statusAnualStr.includes('inconsistente') || statusAnualStr.includes('divergente') || statusAnualStr.includes('outlier'));
 
-        const rawMensalVal = (mensalDirect && mensalDirect.consistencia_mensal) ? mensalDirect.consistencia_mensal : c.consistencia_mensal;
-        const hasNoMensalRecord = !rawMensalVal;
-        const statusConsist = String(rawMensalVal || '').toLowerCase();
-        const detalheConsist = (mensalDirect && mensalDirect.detalhamento_inconsistencia !== undefined) ? mensalDirect.detalhamento_inconsistencia : c.detalhamento_inconsistencia;
+      if (isAnualConsist) {
+        anualConsistentes++;
+      } else if (isAnualInconsist) {
+        anualInconsistentes++;
+      } else {
+        anualSemDados++;
+      }
 
-        const refMonthStr = String(c.mes_referencia || '').slice(0, 7);
-        const isCinthiaMissingMay = (c.codigo_lr === 'LR10245' || String(c.nome_produtor || '').toLowerCase().includes('cinthia')) && refMonthStr === '2026-05';
-        const isSemDadosExplicit = hasNoMensalRecord || statusConsist.includes('sem dados') || statusConsist.includes('sem_dados') || statusConsist.includes('não calculado') || statusConsist.includes('nao calculado');
+      let sitMensal = 'Sem dados';
+      if (isConsistente) sitMensal = 'Consistente';
+      else if (isInconsistente) sitMensal = statusConsist.includes('outlier') ? 'Outlier' : (statusConsist.includes('diverg') ? 'Divergente' : 'Inconsistente');
 
-        const isSemDados = isSemDadosExplicit || isCinthiaMissingMay;
-        const isConsistente = !isSemDados && statusConsist.includes('consistente') && !statusConsist.includes('inconsistente');
-        const isInconsistente = !isSemDados && !isConsistente && (statusConsist.includes('inconsistente') || statusConsist.includes('divergente') || statusConsist.includes('outlier'));
+      let sitAnual = 'Sem dados';
+      if (isAnualConsist) sitAnual = 'Consistente';
+      else if (isAnualInconsist) sitAnual = statusAnualStr.includes('outlier') ? 'Outlier' : (statusAnualStr.includes('diverg') ? 'Divergente' : 'Inconsistente');
+      else if (rawAnualVal) sitAnual = String(rawAnualVal);
 
-        if (isConsistente) {
-          consistentes++;
-        } else if (isInconsistente) {
-          inconsistentes++;
-        } else {
-          semDados++;
-        }
+      const nomeProdutor = p.nome_produtor || metaFallback?.nome_produtor || c?.nome_produtor || p.codigo_lr || 'PRODUTOR';
+      const consultoresSanitizados = sanitizeConsultorList(p.nome_consultor || c?.nome_consultor || metaFallback?.nome_consultor);
+      const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
 
-        const rawAnualVal = (anualDirect && anualDirect.consistencia_anual) ? anualDirect.consistencia_anual : c.consistencia_anual;
-        const detalheConsistAnual = (anualDirect && anualDirect.detalhamento_inconsistencia !== undefined)
-          ? anualDirect.detalhamento_inconsistencia
-          : (c.consistencia_anual && c.consistencia_anual !== 'Consistente' ? c.detalhamento_inconsistencia : null);
-        const statusAnualStr = String(rawAnualVal || '').toLowerCase();
-        const isAnualSemDados = !rawAnualVal || statusAnualStr.includes('sem dados') || statusAnualStr.includes('sem_dados') || statusAnualStr.includes('não calculated') || statusAnualStr.includes('nao calculado');
-        const isAnualConsist = !isAnualSemDados && statusAnualStr.includes('consistente') && !statusAnualStr.includes('inconsistente');
-        const isAnualInconsist = !isAnualSemDados && !isAnualConsist && (statusAnualStr.includes('inconsistente') || statusAnualStr.includes('divergente') || statusAnualStr.includes('outlier'));
-
-        if (isAnualConsist) {
-          anualConsistentes++;
-        } else if (isAnualInconsist) {
-          anualInconsistentes++;
-        } else {
-          anualSemDados++;
-        }
-
-        let sitMensal = 'Sem dados';
-        if (isConsistente) sitMensal = 'Consistente';
-        else if (isInconsistente) sitMensal = statusConsist.includes('outlier') ? 'Outlier' : (statusConsist.includes('diverg') ? 'Divergente' : 'Inconsistente');
-
-        let sitAnual = 'Sem dados';
-        if (isAnualConsist) sitAnual = 'Consistente';
-        else if (isAnualInconsist) sitAnual = statusAnualStr.includes('outlier') ? 'Outlier' : (statusAnualStr.includes('diverg') ? 'Divergente' : 'Inconsistente');
-        else if (rawAnualVal) sitAnual = String(rawAnualVal);
-
-        const produtorAtivo = produtoresMap.get(c.codigo_lr);
-        const metaFallback = fallbackMetaMap.get(c.codigo_lr);
-        const nomeProdutor = produtorAtivo?.nome_produtor || metaFallback?.nome_produtor || c.codigo_lr || 'PRODUTOR';
-        const consultoresSanitizados = sanitizeConsultorList(c.nome_consultor || produtorAtivo?.nome_consultor || metaFallback?.nome_consultor);
-        const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
-
-        listaInconsistentes.push({
-          codigo_lr: c.codigo_lr || 'PRODUTOR',
-          produtor: nomeProdutor,
-          consultor: consultorNome,
-          agroindustria: mapAgroindustria(produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
-          regiao: getRegiao(c.codigo_lr, produtorAtivo?.unidade_atendimento || metaFallback?.unidade_atendimento, produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
-          projeto: c.projeto || produtorAtivo?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
-          status: produtorAtivo ? 'ATIVO' : 'INATIVO',
-          mes_referencia: c.mes_referencia || refMonth,
-          meses_sequenciais: c.meses_sequenciais != null ? seq : null,
-          consistencia_mensal: sitMensal,
-          consistencia_anual: sitAnual,
-          consistencia: sitMensal,
-          detalhamento: detalheConsist || null,
-          consistencia_anual_raw: rawAnualVal,
-          detalhamento_anual: detalheConsistAnual
-        });
+      listaInconsistentes.push({
+        codigo_lr: p.codigo_lr || c?.codigo_lr || 'PRODUTOR',
+        produtor: nomeProdutor,
+        consultor: consultorNome,
+        agroindustria: mapAgroindustria(p.projeto || metaFallback?.projeto || c?.projeto),
+        regiao: getRegiao(p.codigo_lr, p.unidade_atendimento || metaFallback?.unidade_atendimento, p.projeto || metaFallback?.projeto || c?.projeto),
+        projeto: p.projeto || metaFallback?.projeto || c?.projeto || 'NÃO INFORMADO',
+        status: 'ATIVO',
+        mes_referencia: c?.mes_referencia || refMonth,
+        meses_sequenciais: c?.meses_sequenciais != null ? Number(c.meses_sequenciais) : null,
+        consistencia_mensal: sitMensal,
+        consistencia_anual: sitAnual,
+        consistencia: sitMensal,
+        detalhamento: detalheConsist || null,
+        consistencia_anual_raw: rawAnualVal,
+        detalhamento_anual: detalheConsistAnual
       });
-    }
+    });
 
-    const percConsistente = ((consistentes / (total || 1)) * 100).toFixed(1);
-    const percInconsistente = ((inconsistentes / (total || 1)) * 100).toFixed(1);
+    (consistenciaFiltrada || []).forEach(c => {
+      const cdLrUpper = String(c.codigo_lr || '').trim().toUpperCase();
+      if (!cdLrUpper || activeSetConsist.has(cdLrUpper)) return;
+      activeSetConsist.add(cdLrUpper);
+
+      const produtorAtivo = produtoresMap.get(c.codigo_lr);
+      const metaFallback = fallbackMetaMap.get(c.codigo_lr);
+      const nomeProdutor = produtorAtivo?.nome_produtor || metaFallback?.nome_produtor || c.nome_produtor || c.codigo_lr || 'PRODUTOR';
+      const consultoresSanitizados = sanitizeConsultorList(c.nome_consultor || produtorAtivo?.nome_consultor || metaFallback?.nome_consultor);
+      const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
+
+      const mKey = `${cdLrUpper}_${String(c.mes_referencia || refMonth || '').slice(0, 7)}`;
+      const mensalDirect = mensalRefMap.get(mKey) || mensalRefMap.get(cdLrUpper);
+      const anualDirect = anualRefMap.get(mKey) || anualRefMap.get(cdLrUpper);
+
+      const rawMensalVal = (mensalDirect && mensalDirect.consistencia_mensal) ? mensalDirect.consistencia_mensal : c.consistencia_mensal;
+      const statusConsist = String(rawMensalVal || '').toLowerCase();
+      const isSemDados = !rawMensalVal || statusConsist.includes('sem dados') || statusConsist.includes('não calculado');
+      const isConsistente = !isSemDados && statusConsist.includes('consistente') && !statusConsist.includes('inconsistente');
+      const isInconsistente = !isSemDados && !isConsistente && (statusConsist.includes('inconsistente') || statusConsist.includes('divergente') || statusConsist.includes('outlier'));
+
+      const rawAnualVal = (anualDirect && anualDirect.consistencia_anual) ? anualDirect.consistencia_anual : c.consistencia_anual;
+      const statusAnualStr = String(rawAnualVal || '').toLowerCase();
+      const isAnualSemDados = !rawAnualVal || statusAnualStr.includes('sem dados');
+      const isAnualConsist = !isAnualSemDados && statusAnualStr.includes('consistente') && !statusAnualStr.includes('inconsistente');
+      const isAnualInconsist = !isAnualSemDados && !isAnualConsist && (statusAnualStr.includes('inconsistente') || statusAnualStr.includes('divergente') || statusAnualStr.includes('outlier'));
+
+      let sitMensal = 'Sem dados';
+      if (isConsistente) sitMensal = 'Consistente';
+      else if (isInconsistente) sitMensal = statusConsist.includes('outlier') ? 'Outlier' : (statusConsist.includes('diverg') ? 'Divergente' : 'Inconsistente');
+
+      let sitAnual = 'Sem dados';
+      if (isAnualConsist) sitAnual = 'Consistente';
+      else if (isAnualInconsist) sitAnual = statusAnualStr.includes('outlier') ? 'Outlier' : (statusAnualStr.includes('diverg') ? 'Divergente' : 'Inconsistente');
+      else if (rawAnualVal) sitAnual = String(rawAnualVal);
+
+      listaInconsistentes.push({
+        codigo_lr: c.codigo_lr || 'PRODUTOR',
+        produtor: nomeProdutor,
+        consultor: consultorNome,
+        agroindustria: mapAgroindustria(produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
+        regiao: getRegiao(c.codigo_lr, produtorAtivo?.unidade_atendimento || metaFallback?.unidade_atendimento, produtorAtivo?.projeto || metaFallback?.projeto || c.projeto),
+        projeto: c.projeto || produtorAtivo?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
+        status: 'INATIVO',
+        mes_referencia: c.mes_referencia || refMonth,
+        meses_sequenciais: c.meses_sequenciais != null ? Number(c.meses_sequenciais) : null,
+        consistencia_mensal: sitMensal,
+        consistencia_anual: sitAnual,
+        consistencia: sitMensal,
+        detalhamento: c.detalhamento_inconsistencia || null,
+        consistencia_anual_raw: rawAnualVal,
+        detalhamento_anual: c.detalhamento_inconsistencia
+      });
+    });
+
+    const totalBase = listaInconsistentes.length;
+    const percConsistente = ((consistentes / (totalBase || 1)) * 100).toFixed(1);
+    const percInconsistente = ((inconsistentes / (totalBase || 1)) * 100).toFixed(1);
     const percAnual = (anualConsistentes + anualInconsistentes + anualSemDados) > 0 
       ? ((anualConsistentes / (anualConsistentes + anualInconsistentes + anualSemDados)) * 100).toFixed(1) 
       : percConsistente;
@@ -326,10 +391,6 @@ module.exports = async (req, res) => {
       evolucaoConsistencia.anual.push(anualAvaliado.length ? Number(((anualAvaliado.filter(c => isConsistent(c.consistencia_anual)).length / anualAvaliado.length) * 100).toFixed(1)) : 0);
     });
 
-    const consistenciaMap = new Map();
-    (consistenciaFiltrada || []).forEach(c => {
-      if (c.codigo_lr) consistenciaMap.set(String(c.codigo_lr).trim().toUpperCase(), c);
-    });
 
     const activeSet = new Set();
     const tabelaProdutoresComDados = (produtoresAtivos || []).map(p => {
@@ -350,8 +411,9 @@ module.exports = async (req, res) => {
       const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
       const mesRefVal = c?.mes_referencia || refMonth;
 
+      const isInactiveProd = String(p.status || c?.status || '').trim().toUpperCase().includes('INATIV');
       const isCad = c?.excecao !== 1 && c?.excecao !== true;
-      const cadLabel = isCad ? 'SIM' : 'NÃO';
+      const cadLabel = isInactiveProd ? 'INATIVO' : (isCad ? 'SIM' : 'NÃO');
 
       const defaultBlocks = {
         receita: false,
@@ -395,14 +457,14 @@ module.exports = async (req, res) => {
         projeto: p.projeto || metaFallback?.projeto || c?.projeto || 'NÃO INFORMADO',
         mes_referencia: mesRefVal,
         possui_dados: temDado,
-        cadastro_elabore: isCad,
+        cadastro_elabore: isInactiveProd ? 'INATIVO' : isCad,
         cadastro_elabore_label: cadLabel,
         dados_elabore_pct: dadosPct,
         dados_elabore_status: dadosStatus,
         dados_elabore_tem_dado: temDado,
         detalhes_blocos: detalhesBlocos,
         referencia: mesRefVal ? new Date(`${String(mesRefVal).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-',
-        status: 'ATIVO'
+        status: isInactiveProd ? 'INATIVO' : 'ATIVO'
       };
     });
 
@@ -427,7 +489,7 @@ module.exports = async (req, res) => {
       const consultorNome = consultoresSanitizados[0] || 'NÃO INFORMADO';
 
       const isCad = c.excecao !== 1 && c.excecao !== true;
-      const cadLabel = isCad ? 'SIM' : 'NÃO';
+      const cadLabel = 'INATIVO';
 
       const defaultBlocks = {
         receita: false,
@@ -471,8 +533,8 @@ module.exports = async (req, res) => {
         projeto: c.projeto || produtor?.projeto || metaFallback?.projeto || 'NÃO INFORMADO',
         mes_referencia: c.mes_referencia || refMonth,
         possui_dados: temDado,
-        cadastro_elabore: isCad,
-        cadastro_elabore_label: cadLabel,
+        cadastro_elabore: 'INATIVO',
+        cadastro_elabore_label: 'INATIVO',
         dados_elabore_pct: dadosPct,
         dados_elabore_status: dadosStatus,
         dados_elabore_tem_dado: temDado,
@@ -493,7 +555,7 @@ module.exports = async (req, res) => {
         perc_inconsistente: percInconsistente,
         produtores_com_dados: produtoresComDados,
         fazendas_aptas: consistentes,
-        base_analisada: total,
+        base_analisada: totalBase,
         registros_divergentes: inconsistentes,
         produtores_carencia: carencia,
         excecoes_ativas: excecoes

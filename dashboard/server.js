@@ -89,6 +89,6 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => {
+server.listen(port, () => {
   console.log(`Dashboard Labor Rural disponível em http://localhost:${port}`);
 });
