@@ -815,8 +815,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setupTableSorting() {
     const MAPPINGS = {
-      tbodySemVisita: ['codigo_lr', 'consultor', 'produtor', 'data_associacao', 'data_visita_mes_anterior', 'data_ultima_visita', 'dias_sem_visita', 'status'],
-      tbodyVisitados: ['codigo_lr', 'consultor', 'produtor', 'atendimento', 'data_visita', 'elabore_ok'],
+      tbodySemVisita: ['codigo_lr', 'consultor', 'produtor', 'propriedade', 'data_associacao', 'data_visita_mes_anterior', 'data_ultima_visita', 'dias_sem_visita', 'status'],
+      tbodyVisitados: ['codigo_lr', 'consultor', 'produtor', 'propriedade', 'atendimento', 'data_visita', 'cadastro_elabore_label', 'dados_elabore_status'],
       tbodyTurnover: ['atendimento', 'produtor', 'tipo', 'data', 'grupo', 'motivo'],
       tbodyConsultants: ['consultor', 'total_fazendas', 'fazendas_visitadas', 'total_visitas', 'perc_cobertura', 'status'],
       tbodyDataProducers: ['codigo_lr', 'produtor', 'consultor', 'possui_dados', 'referencia', 'status'],
@@ -1085,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
     withoutVisit = sortRows(withoutVisit, tableSort.tbodySemVisita, (row, key) => row[key] ?? row.data_associacao ?? row.data_referencia);
     updateTableHeadIcons('tbodySemVisita', tableSort.tbodySemVisita.colKey, tableSort.tbodySemVisita.dir);
     const pWithoutVisit = getPaginatedSlice('tableSemVisita', withoutVisit);
-    if (el('tbodySemVisita')) el('tbodySemVisita').innerHTML = rowsOrEmpty(pWithoutVisit, 8, (row) => {
+    if (el('tbodySemVisita')) el('tbodySemVisita').innerHTML = rowsOrEmpty(pWithoutVisit, 9, (row) => {
       const hasDays = row.dias_sem_visita !== null && row.dias_sem_visita !== undefined && row.dias_sem_visita !== '';
       const days = hasDays ? Number(row.dias_sem_visita) : null;
       
@@ -1118,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dtAssoc = row.data_associacao || row.data_vinculacao || row.data_referencia || '—';
       const dtVisitaMesAnterior = row.data_visita_mes_anterior || '—';
       const dtUltimaVisita = row.data_ultima_visita || '—';
-      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-center" title="${escapeHtml(dtAssoc)}">${escapeHtml(dtAssoc)}</td><td class="col-center" title="${escapeHtml(dtVisitaMesAnterior)}">${escapeHtml(dtVisitaMesAnterior)}</td><td class="col-center" title="${escapeHtml(dtUltimaVisita)}">${escapeHtml(dtUltimaVisita)}</td><td class="col-center font-tabular">${hasDays ? days : '—'}</td><td class="col-center"><span class="badge ${badgeClass}" title="${escapeHtml(status)}">${escapeHtml(status)}</span></td></tr>`;
+      return `<tr class="${rowClass}"><td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td><td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td><td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td><td class="col-left col-fazenda" title="${escapeHtml(row.propriedade || row.fazenda || '—')}">${escapeHtml(row.propriedade || row.fazenda || '—')}</td><td class="col-center col-data-associacao" title="${escapeHtml(dtAssoc)}">${escapeHtml(dtAssoc)}</td><td class="col-center col-visita-mes-anterior" title="${escapeHtml(dtVisitaMesAnterior)}">${escapeHtml(dtVisitaMesAnterior)}</td><td class="col-center" title="${escapeHtml(dtUltimaVisita)}">${escapeHtml(dtUltimaVisita)}</td><td class="col-center font-tabular">${hasDays ? days : '—'}</td><td class="col-center"><span class="badge ${badgeClass}" title="${escapeHtml(status)}">${escapeHtml(status)}</span></td></tr>`;
     });
     renderTablePagination('paginationSemVisita', 'tableSemVisita', withoutVisit.length);
 
@@ -1129,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     visited = sortRows(visited, tableSort.tbodyVisitados, (row, key) => row[key]);
     updateTableHeadIcons('tbodyVisitados', tableSort.tbodyVisitados.colKey, tableSort.tbodyVisitados.dir);
     const pVisited = getPaginatedSlice('tableVisitados', visited);
-    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 7, (row) => {
+    if (el('tbodyVisitados')) el('tbodyVisitados').innerHTML = rowsOrEmpty(pVisited, 8, (row) => {
       const isCad = row.cadastro_elabore !== false && row.cadastro_elabore !== 'NÃO' && String(row.cadastro_elabore_label || '').toUpperCase() !== 'NÃO' && Boolean(row.cadastro_elabore);
       const cadBadge = isCad
         ? '<span class="badge badge-positive">SIM</span>'
@@ -1154,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="col-center"><strong>${escapeHtml(row.codigo_lr || '—')}</strong></td>
         <td class="col-left" title="${escapeHtml(row.consultor || '—')}">${escapeHtml(row.consultor || '—')}</td>
         <td class="col-left" title="${escapeHtml(row.produtor || '—')}">${escapeHtml(row.produtor || '—')}</td>
+        <td class="col-left col-fazenda" title="${escapeHtml(row.propriedade || row.fazenda || '—')}">${escapeHtml(row.propriedade || row.fazenda || '—')}</td>
         <td class="col-center" title="${escapeHtml(row.atendimento || '—')}">${escapeHtml(row.atendimento || '—')}</td>
         <td class="col-center">${escapeHtml(row.data_visita || '—')}</td>
         <td class="col-center">${cadBadge}</td>

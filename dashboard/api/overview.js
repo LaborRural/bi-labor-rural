@@ -676,11 +676,15 @@ module.exports = async (req, res) => {
           }
         }
 
+        const propSemVisita = p.nome_propriedade && !['PROPRIEDADE', 'FAZENDA', '-', ''].includes(String(p.nome_propriedade).trim().toUpperCase())
+          ? String(p.nome_propriedade).trim()
+          : 'PROPRIEDADE';
+
         return {
           consultor: p.nome_consultor || 'NÃO ATRIBUÍDO',
           codigo_lr: p.codigo_lr || '-',
           produtor: p.nome_produtor || 'PRODUTOR SEM NOME',
-          propriedade: p.nome_propriedade || '-',
+          propriedade: propSemVisita,
           agroindustria: agro,
           regiao: getRegiao(p.codigo_lr, p.regiao || p.unidade_atendimento, agro, p.projeto),
           projeto: p.projeto || 'NÃO INFORMADO',
@@ -711,7 +715,16 @@ module.exports = async (req, res) => {
 
         const codLrNorm = String(v.codigo_lr || '').trim().toUpperCase();
         const produtorNorm = String(v.nome_produtor || '').trim().toUpperCase();
-        const propriedadeNorm = String(v.nome_propriedade || produtorAtivo?.nome_propriedade || '').trim().toUpperCase();
+
+        const propAtivoVal = produtorAtivo?.nome_propriedade && !['PROPRIEDADE', 'FAZENDA', '-', ''].includes(String(produtorAtivo.nome_propriedade).trim().toUpperCase())
+          ? String(produtorAtivo.nome_propriedade).trim()
+          : null;
+        const propVisitaVal = v.nome_propriedade && !['PROPRIEDADE', 'FAZENDA', '-', ''].includes(String(v.nome_propriedade).trim().toUpperCase())
+          ? String(v.nome_propriedade).trim()
+          : null;
+        const propriedadeFinal = propAtivoVal || propVisitaVal || 'PROPRIEDADE';
+
+        const propriedadeNorm = String(propriedadeFinal).trim().toUpperCase();
         const monthKey = String(v.mes_referencia || refMonth || '').slice(0, 7);
         const elaboreObj = elaboreMensalMap.get(`${codLrNorm}_${monthKey}`);
         
@@ -728,7 +741,7 @@ module.exports = async (req, res) => {
           consultor: v.nome_consultor || 'CONSULTOR',
           codigo_lr: v.codigo_lr || '-',
           produtor: v.nome_produtor || 'PRODUTOR',
-          propriedade: v.nome_propriedade || produtorAtivo?.nome_propriedade || 'FAZENDA',
+          propriedade: propriedadeFinal,
           agroindustria: agro,
           regiao: getRegiao(v.codigo_lr, produtorAtivo?.regiao || produtorAtivo?.unidade_atendimento, agro, v.projeto || produtorAtivo?.projeto),
           projeto: v.projeto || produtorAtivo?.projeto || 'NÃO INFORMADO',

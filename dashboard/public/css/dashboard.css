@@ -3527,5 +3527,53 @@ th.col-center .table-col-filter { text-align: center !important; }
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(110, 231, 183, 0.3) !important;
 }
 
+/* Colunas secundárias (visíveis apenas ao expandir painel em tela cheia) */
+#tableSemVisita .col-fazenda,
+#tableSemVisita .col-data-associacao,
+#tableSemVisita .col-visita-mes-anterior,
+#tableVisitados .col-fazenda {
+  display: none !important;
+}
+
+.panel-card.is-fullscreen #tableSemVisita .col-fazenda,
+.panel-card.is-fullscreen #tableSemVisita .col-data-associacao,
+.panel-card.is-fullscreen #tableSemVisita .col-visita-mes-anterior,
+.panel-card.is-fullscreen #tableVisitados .col-fazenda {
+  display: table-cell !important;
+}
+
+/* Ajuste Compacto e Alinhamento do Cabeçalho das Tabelas */
+.data-table {
+  height: auto !important;
+}
+
+.data-table thead tr:first-child th {
+  height: 28px !important;
+  padding: 5px 6px !important;
+  vertical-align: middle !important;
+  line-height: 1.15 !important;
+}
+
+.data-table thead tr.table-filter-row th {
+  height: 26px !important;
+  padding: 2px 4px !important;
+  vertical-align: middle !important;
+}
+
+.data-table th.col-center {
+  text-align: center !important;
+}
+
+.data-table th.col-center .th-title-text {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.data-table th .kpi-info-btn {
+  display: inline-flex !important;
+  vertical-align: middle !important;
+  margin-left: 3px !important;
+}
+
 
 
